@@ -1,5 +1,6 @@
 import { cerrarSesion } from "@/server/actions/auth";
 import { requireCtx } from "@/server/auth/context";
+import Link from "next/link";
 
 export default async function Home() {
   const ctx = await requireCtx();
@@ -13,6 +14,10 @@ export default async function Home() {
           <div><dt className="text-neutral-500">Clínica</dt><dd className="font-mono">{ctx.clinicaId}</dd></div>
           <div><dt className="text-neutral-500">Roles</dt><dd>{ctx.roles.join(" · ")}</dd></div>
         </dl>
+        <nav className="mt-6 flex flex-wrap gap-3" aria-label="Módulos disponibles">
+          <Link href="/pacientes" className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Pacientes</Link>
+          <Link href="/agenda" className="rounded-lg border px-4 py-2 text-sm font-medium">Agenda</Link>
+        </nav>
         <form action={cerrarSesion} className="mt-6">
           <button className="rounded-lg border px-4 py-2 text-sm font-medium">Cerrar sesión</button>
         </form>

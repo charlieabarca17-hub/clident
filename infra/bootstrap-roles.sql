@@ -13,7 +13,10 @@
 GRANT clident_migrator TO neondb_owner;
 
 REVOKE ALL ON DATABASE neondb FROM PUBLIC;
-GRANT CONNECT ON DATABASE neondb TO clident_migrator, clident_app, clident_readonly;
+-- CREATE dentro de esta base permite instalar extensiones versionadas por migraciones
+-- (por ejemplo btree_gist). No concede CREATEDB, superusuario ni BYPASSRLS.
+GRANT CONNECT, CREATE ON DATABASE neondb TO clident_migrator;
+GRANT CONNECT ON DATABASE neondb TO clident_app, clident_readonly;
 
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE, CREATE ON SCHEMA public TO clident_migrator;

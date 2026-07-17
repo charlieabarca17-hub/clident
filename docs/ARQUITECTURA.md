@@ -180,12 +180,12 @@ ALTER DEFAULT PRIVILEGES FOR ROLE clident_migrator IN SCHEMA public
 
 | Clase | `GRANT` a `clident_app` | Tablas |
 |---|---|---|
-| **APPEND_ONLY** | `SELECT, INSERT` | `eventos_odontograma`, `auditoria`, `movimientos_inventario`, `aplicaciones_pago`, `enmiendas_procedimiento`, `lineas_cargo`, `procedimiento_dientes`, `documentos_fiscales` |
+| **APPEND_ONLY** | `SELECT, INSERT` | `eventos_odontograma`, `auditoria`, `alertas_medicas`, `desactivaciones_alertas_medicas`, `movimientos_inventario`, `aplicaciones_pago`, `enmiendas_procedimiento`, `lineas_cargo`, `procedimiento_dientes`, `documentos_fiscales` |
 | **REFERENCIA_GLOBAL** | `SELECT` (lo da el default) | `dientes_ref`, `superficies_diente`, `plantillas_categoria`, `plantillas_tratamiento` |
 | **PUENTE_EDITABLE** | `SELECT, INSERT, DELETE` (sin `UPDATE`) | `diagnostico_dientes`, `plan_item_dientes` — las únicas dos con `DELETE` legítimo: editar los dientes de un borrador es delete+insert |
 | **PROYECCION_DERIVADA** | `SELECT, INSERT, UPDATE, DELETE` | `estados_superficie` — derivada y regenerable; el rebuild y la anulación recalculada necesitan reescribirla |
 | **PARCIALMENTE_INMUTABLE** | `SELECT, INSERT` + `GRANT UPDATE (columnas mutables)` | `procedimientos` (§10.5), `cargos`, `pagos` (§12.5), **`plan_items` (§10.6)** |
-| **NORMAL** | `SELECT, INSERT, UPDATE` — **sin `DELETE`** | `pacientes`, `expedientes`, `alertas_medicas`, `citas`, `diagnosticos`, `planes`, `tratamientos`, `categorias_tratamiento`, `materiales`, `membresias`, `sucursales`, `clinicas`, `usuarios`, `contadores` |
+| **NORMAL** | `SELECT, INSERT, UPDATE` — **sin `DELETE`** | `pacientes`, `expedientes`, `citas`, `diagnosticos`, `planes`, `tratamientos`, `categorias_tratamiento`, `materiales`, `membresias`, `sucursales`, `clinicas`, `usuarios`, `contadores` |
 
 **`DELETE` no se concede en ninguna parte salvo puentes y proyección.** Revisé todos los flujos documentados y ninguno lo necesita: las citas se cancelan, los planes se anulan, las membresías se desactivan, las sesiones son JWT sin tabla, y un `PlanItem` de un borrador pasa a `CANCELADO` en vez de borrarse.
 
@@ -417,7 +417,7 @@ Se descartó una función `SECURITY DEFINER` que verificara la contraseña dentr
 
 ```ts
 export const PERMISOS_POR_ROL: Record<Rol, readonly Permiso[]> = {
-  ADMINISTRADOR: [/* todos */],
+  ADMINISTRADOR: [/* todos salvo clinico:* */],
   ODONTOLOGO: ['agenda:read','agenda:write','paciente:read','paciente:write','paciente:read_pii',
                'clinico:read','clinico:write','catalogo:read','caja:read','inventario:read'],
   RECEPCION:  ['agenda:read','agenda:write','paciente:read','paciente:write','catalogo:read'],
@@ -430,6 +430,9 @@ export const PERMISOS_POR_ROL: Record<Rol, readonly Permiso[]> = {
 **`Membresia.roles Rol[]`** — arreglo de enum nativo de PostgreSQL. Múltiples roles simples por membresía. **No** rol único, **no** tabla puente, **no** motor ACL configurable.
 
 `ADMINISTRADOR + ODONTOLOGO` es la clínica salvadoreña típica (el dueño es odontólogo).
+**`ADMINISTRADOR` por sí solo no tiene `clinico:read` ni `clinico:write`:** administra,
+pero no lee ni escribe alertas, notas u otro contenido del expediente. Los permisos se
+combinan por unión cuando además tiene `ODONTOLOGO`.
 
 ```sql
 ALTER TABLE membresias ADD CONSTRAINT membresia_con_rol

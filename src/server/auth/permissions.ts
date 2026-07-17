@@ -13,10 +13,13 @@ export const PERMISOS = [
 
 export type Permiso = (typeof PERMISOS)[number];
 
-const TODOS = PERMISOS;
+// Administración no implica facultad clínica. El dueño que también atiende lleva
+// ADMINISTRADOR + ODONTOLOGO y recibe la unión; un gerente administrativo no puede
+// escribir ni leer alertas, notas o futuros módulos clínicos (ADR-003).
+const ADMINISTRADOR_SIN_CLINICO = PERMISOS.filter((permiso) => !permiso.startsWith("clinico:"));
 
 export const PERMISOS_POR_ROL: Record<Rol, readonly Permiso[]> = {
-  ADMINISTRADOR: TODOS,
+  ADMINISTRADOR: ADMINISTRADOR_SIN_CLINICO,
   ODONTOLOGO: [
     "agenda:read", "agenda:write", "paciente:read", "paciente:write",
     "paciente:read_pii", "clinico:read", "clinico:write", "catalogo:read",
