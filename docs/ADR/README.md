@@ -25,10 +25,14 @@ Los ADR existen porque las decisiones de este proyecto tienen razones que no se 
 | [ADR-004](ADR-004-fk-compuestas.md) | Foreign keys compuestas multi-tenant | Aceptado |
 | [ADR-005](ADR-005-odontograma-eventos.md) | Odontograma basado en eventos append-only | Aceptado |
 | [ADR-006](ADR-006-snapshot-precios.md) | Snapshot histórico de tratamientos y precios | Aceptado |
-| [ADR-007](ADR-007-deuda-nace-en-cargo.md) | La deuda nace exclusivamente en `Cargo` | Aceptado |
+| [ADR-007](ADR-007-deuda-nace-en-cargo.md) | La cuenta por cobrar se registra exclusivamente en `Cargo` | Aceptado — *superseded parcialmente por ADR-013 (solo la fórmula del saldo)* |
 | [ADR-008](ADR-008-agenda-exclude.md) | Agenda protegida por `EXCLUDE` constraint | Aceptado |
 | [ADR-009](ADR-009-centavos-enteros.md) | Centavos enteros para dinero | Aceptado |
 | [ADR-010](ADR-010-npm-neon-postgres-real.md) | npm + Neon + PostgreSQL real en pruebas | Aceptado |
+| [ADR-011](ADR-011-aplazamiento-operador-plataforma.md) | Operador de plataforma aplazado hasta la clínica #2 | Aceptado |
+| [ADR-012](ADR-012-modelo-de-privilegios.md) | Modelo de privilegios: default restrictivo y clases de tabla | Aceptado |
+| [ADR-013](ADR-013-exigibilidad-de-cargos.md) | Exigibilidad: nacer no es lo mismo que vencer | Aceptado |
+| [ADR-014](ADR-014-estados-plan.md) | Estados de `PlanTratamiento` y `PlanItem` | Aceptado |
 
 ## Formato
 

@@ -31,7 +31,8 @@ EventoOdontograma  (append-only)   fdi, superficie, tipo, condicion?, ocurridoEn
                                    anulaEventoId?, motivoAnulacion?
 
 EstadoSuperficie   (proyección)    @@unique([clinicaId, pacienteId, fdi, superficie])
-                                   condicion, tratamientoPendiente, ultimoEventoId, ultimoEventoEn
+                                   condicion, tratamientoPendiente, ultimoEventoId,
+                                   ultimoEventoEn, ultimoEventoCreadoEn
 ```
 
 **Tipos de evento:** `CONDICION_REGISTRADA`, `TRATAMIENTO_INDICADO`, `PROCEDIMIENTO_REALIZADO`, `CONDICION_ANULADA`.
@@ -78,12 +79,18 @@ EstadoSuperficie   (proyección)    @@unique([clinicaId, pacienteId, fdi, superf
 - Un `fdi` o una superficie inválidos son violación de FK, no un bug silencioso.
 
 **En contra:**
-- La proyección puede desincronizarse. **Acotado:** es derivada, nunca autoritativa; ambas escrituras van en una `$transaction`; `npm run odontograma:rebuild` la regenera; y una prueba verifica que `rebuild()` es **idempotente**. Esa prueba es lo que hace segura la proyección.
+- La proyección puede desincronizarse. **Acotado:** es derivada, nunca autoritativa; ambas escrituras van en una `$transaction`; `npm run odontograma:rebuild` la regenera; y una prueba de **equivalencia de caminos** verifica que el rebuild reproduce exactamente lo que escribió el camino en vivo. Esa prueba es lo que hace segura la proyección.
+
+  > **Corrección del Ciclo 1 (auditoría).** Este párrafo decía que la prueba era *"`rebuild()` es idempotente"*. **Era la prueba equivocada.** Idempotencia es `rebuild(rebuild(x)) == rebuild(x)` — o sea, el reducer consistente consigo mismo: casi imposible que falle y no prueba nada útil. El riesgo real es que el **camino en vivo** (el `UPDATE` condicional) y el **camino de rebuild** (el reducer) son dos implementaciones distintas de la misma pregunta —"¿qué evento gana?"— y pueden divergir. La decisión del ADR no cambia; lo que se corrige es una afirmación falsa sobre qué la protegía. Ver `ARQUITECTURA.md` §10.1.
 - Más filas que un modelo mutable. Irrelevante a escala de clínica dental.
 
 **Frágil:**
 - Un agente que agregue un tipo de evento y olvide la rama del reducer. **Mitigación:** el `switch` **no tiene `default`** — TypeScript convierte un enum nuevo sin rama en **error de compilación**.
-- **Carrera detectada en el Ciclo 0:** dos eventos concurrentes sobre la misma superficie hacían que ganara el último en commitear, aunque su `ocurridoEn` fuera **anterior**. Un evento retroactivo podía pisar uno más nuevo. Corregido: la actualización de la proyección es condicional (`AND ultimo_evento_en <= $nuevo`).
+- **Carrera detectada en el Ciclo 0:** dos eventos concurrentes sobre la misma superficie hacían que ganara el último en commitear, aunque su `ocurridoEn` fuera **anterior**. Un evento retroactivo podía pisar uno más nuevo. Corregido: la actualización de la proyección es condicional sobre la **tupla completa** (`AND (ultimo_evento_en, ultimo_evento_creado_en) <= ($ocurridoEn, $creadoEn)`).
+
+  > **Corrección del Ciclo 1 (auditoría).** La condición decía `AND ultimo_evento_en <= $nuevo` — **un solo campo**, mientras el reducer desempata por **dos**, `(ocurridoEn, creadoEn)`. Con dos eventos del mismo día, el camino en vivo desempataba por orden de commit y el rebuild por `creadoEn`: **criterios distintos, resultados distintos.** Por eso `EstadoSuperficie` guarda ahora `ultimoEventoCreadoEn` además de `ultimoEventoEn`.
+
+- **Hueco detectado en el Ciclo 1 (auditoría): `CONDICION_ANULADA` no se puede proyectar con un `UPDATE` condicional.** Al anular, el estado correcto de la superficie no sale del evento nuevo — sale del **último evento no anulado anterior**, que el evento de anulación no conoce. Un `UPDATE` con sus datos deja el diente mostrando la condición anulada, o mostrando "anulada" como si fuera un diagnóstico: falla en silencio y es clínico. **`CONDICION_ANULADA` recalcula** esa `(fdi, superficie)` plegando su historia con el mismo reducer del rebuild. Es el único tipo de evento que se proyecta así. Ver `ARQUITECTURA.md` §10.1.
 
 ## Costo de revertir
 

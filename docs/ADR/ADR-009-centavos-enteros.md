@@ -72,7 +72,11 @@ Descartada: es una dependencia más para mantener y para que los agentes entiend
 - Un `Int` mal leído se ve como 100× el precio real. Mitigación: la convención de nombre `...Centavos` es obligatoria, y `money.ts` es el único que convierte.
 - Los agregados grandes deben ser `bigint` en SQL. Una línea de nota en `money.ts`.
 
-**Nota sobre el IVA:** la decisión de si los precios llevan IVA incluido o agregado sigue **pendiente** (`ARQUITECTURA.md` §19). Es independiente de este ADR: se resuelve igual con centavos enteros, pero define si `Cargo` necesita subtotal/impuesto/total. **Es la decisión pendiente más cara del proyecto:** decidirla tarde significa migrar datos financieros.
+**Nota sobre el IVA:** la decisión de si los precios llevan IVA incluido o agregado sigue **pendiente** (`ARQUITECTURA.md` §19 #3). Es independiente de este ADR: se resuelve igual con centavos enteros, pero define si `Cargo` necesita subtotal/impuesto/total.
+
+> **Ampliada en el Ciclo 1 (auditoría).** El IVA **no es lo único** que define la forma de `Cargo`, y decidirlo solo significaría pagar la migración financiera dos o tres veces. Falta también: **el descuento en `LineaCargo`** (`PlanItem` tiene `descuentoCentavos`; `LineaCargo` no tiene ninguno, y el descuento de mostrador es el caso más común de una clínica salvadoreña), **el orden de redondeo** (¿IVA sobre el total del cargo o línea por línea? ¿el descuento antes o después del impuesto? Dan resultados distintos en centavos, y esos centavos son los que después no cuadran en el corte de caja), y **si todo `Cargo` lleva al menos una `LineaCargo`** — de eso depende la reconciliación §13.4 #4. La pendiente #3 se reformuló a **"cerrar la forma definitiva de `Cargo` y `LineaCargo`"**: una sola decisión, un solo momento, una sola migración.
+>
+> **Las más caras siguen siendo #3, #9 y #10** — las tres cuestan migración de datos financieros. **La ortodoncia se resolvió** con el [ADR-013](ADR-013-exigibilidad-de-cargos.md): `fechaExigibleEn` ya no es una pendiente.
 
 ## Costo de revertir
 

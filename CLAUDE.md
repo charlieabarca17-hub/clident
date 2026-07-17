@@ -10,7 +10,7 @@ CLIDENT es un sistema de gestión para clínicas odontológicas, multi-clínica 
 
 ## 0. El párrafo que resume todo
 
-> Toda tabla tiene `clinicaId`. Toda lectura usa `findFirst({ where: { id, clinicaId: ctx.clinicaId } })` — **nunca** `findUnique({ where: { id } })`. Solo `src/server/db/**` importa Prisma. Los precios son centavos enteros, copiados (congelados) al escribir: **si hacés join a `Tratamiento` para obtener el precio de un plan existente, introdujiste un bug**. Los datos clínicos nunca se borran ni se sobrescriben: los cambios del odontograma son filas nuevas de `EventoOdontograma`, las correcciones de procedimientos son filas de `EnmiendaProcedimiento`, y todo lo demás se anula con motivo. Un tratamiento presupuestado o realizado **no** es deuda: la deuda existe solo cuando existe una fila de `Cargo`, y los `Cargo` los crea únicamente un humano desde el módulo de Caja. `set_config('app.clinica_id', ..., true)` solo se toca en `src/server/db/tenant.ts`, y el tercer parámetro `true` es obligatorio: sin él, el pooler filtra datos entre clínicas. **Nunca corras `prisma db push`**: borra en silencio el constraint de solapamiento de citas, las políticas RLS y la columna `dui_enmascarado`, que viven en migraciones SQL escritas a mano. Ante la duda, agregá un constraint de base de datos, no una validación en código.
+> Toda tabla tiene `clinicaId`. Toda lectura usa `findFirst({ where: { id, clinicaId: ctx.clinicaId } })` — **nunca** `findUnique({ where: { id } })`. Solo `src/server/db/**` importa Prisma. Los precios son centavos enteros, copiados (congelados) al escribir: **si hacés join a `Tratamiento` para obtener el precio de un plan existente, introdujiste un bug**. Los datos clínicos nunca se borran ni se sobrescriben: los cambios del odontograma son filas nuevas de `EventoOdontograma`, las correcciones de procedimientos son filas de `EnmiendaProcedimiento`, y todo lo demás se anula con motivo. Un tratamiento presupuestado o realizado **no** entra a la cuenta por cobrar: eso pasa solo cuando existe una fila de `Cargo`, y los `Cargo` los crea únicamente un humano desde el módulo de Caja — **incluidas las cuotas de ortodoncia, que exigen una acción de Caja aparte de la aceptación del plan**. `set_config('app.clinica_id', ..., true)` solo se toca en `src/server/db/tenant.ts`, y el tercer parámetro `true` es obligatorio: sin él, el pooler filtra datos entre clínicas. **Nunca corras `prisma db push`**: borra en silencio el constraint de solapamiento de citas, las políticas RLS y la columna `dui_enmascarado`, que viven en migraciones SQL escritas a mano. Ante la duda, agregá un constraint de base de datos, no una validación en código.
 
 ---
 
@@ -61,7 +61,7 @@ Un agente de IA olvida un `where`. No puede olvidar un constraint.
 **Nunca, bajo ninguna circunstancia, por ningún motivo.**
 
 `db push` **borra en silencio**:
-- el constraint `EXCLUDE` que impide el doble booking de citas,
+- los dos constraints `EXCLUDE` que impiden el doble booking de citas (uno por odontólogo y uno por paciente: ninguno de los dos puede estar en dos lugares a la vez),
 - las políticas RLS que aíslan las clínicas,
 - la columna generada `dui_enmascarado`,
 - los `CHECK` que impiden sobreaplicar pagos y dejar stock negativo.
@@ -103,7 +103,7 @@ npx prisma migrate dev                  # aplica
 PACIENTE → EXPEDIENTE → ODONTOGRAMA → DIAGNÓSTICO → PLAN DE TRATAMIENTO
         → PROCEDIMIENTO REALIZADO → [decisión humana en Caja] → CARGO → PAGO
                                      ↑
-                           la deuda nace SOLO aquí
+                la cuenta por cobrar se registra SOLO aquí
 ```
 
 | No mezclar | Por qué |
@@ -111,7 +111,9 @@ PACIENTE → EXPEDIENTE → ODONTOGRAMA → DIAGNÓSTICO → PLAN DE TRATAMIENTO
 | **Diagnóstico** y **tratamiento** | Un diagnóstico genera 0, 1 o **muchos** tratamientos. Pulpitis en el 26 → endodoncia + reconstrucción + corona. Nunca hagas una relación 1:1. |
 | **Catálogo** y **tratamiento asignado** | `Tratamiento` es el catálogo maestro. `PlanItem` es lo asignado a un paciente. Son tablas distintas y **el precio no se lee del catálogo** (§7). |
 | **Planificado** y **realizado** | `PlanItem` es intención. `Procedimiento` es un hecho clínico ocurrido. Estados y tablas independientes. |
-| **Realizado** y **cobrado** | Un procedimiento realizado **no es deuda**. Ver §8. |
+| **Realizado** y **cobrado** | Un procedimiento realizado **no entra a la cuenta por cobrar**. Ver §8. |
+| **Aceptación clínica** y **generación financiera** | Aceptar un plan **nunca** crea cargos. El calendario de cuotas lo crea Caja en una **acción aparte**. Ver §8. |
+| **Progreso clínico** y **programación** | El estado de un `PlanItem` describe el tratamiento; las citas viven en Agenda. **`PROGRAMADO` no es un estado de `PlanItem`.** |
 
 ---
 
@@ -129,21 +131,43 @@ PACIENTE → EXPEDIENTE → ODONTOGRAMA → DIAGNÓSTICO → PLAN DE TRATAMIENTO
 
 ---
 
-## 8. La deuda nace solo en Caja
+## 8. La cuenta por cobrar se registra solo en Caja
 
-| Concepto | Dónde vive | ¿Es deuda? |
+| Concepto | Dónde vive | ¿Está en la cuenta por cobrar? |
 |---|---|---|
-| Presupuestado | `PlanItem.estado = PENDIENTE` | ❌ No |
+| Presupuestado | `PlanItem.estado = PROPUESTO` | ❌ No |
 | Aceptado | `PlanItem.estado = ACEPTADO` | ❌ **No** |
 | Realizado | `Procedimiento.estado = REALIZADO` | ❌ **No** |
-| Facturado / cobrado | `Cargo` creado explícitamente | ✅ **Sí — aquí nace** |
+| Facturado / cobrado | `Cargo` creado explícitamente | ✅ **Sí — aquí se registra** |
 | Pagado | `AplicacionPago` cubre el `Cargo` | — |
+
+> **CLIDENT no decide cuándo nace una obligación jurídica** — eso lo deciden el contrato, el consentimiento firmado y la ley. Lo que este sistema define es **cuándo reconoce una cuenta por cobrar**. No escribas que "la deuda no existe" antes del `Cargo`: escribí que **no está registrada**.
 
 **No existe ninguna ruta automática de plan o procedimiento a `Cargo`.** Solo `crearCargo(ctx, ...)`, invocada desde el módulo de Caja por un usuario con permiso `caja:write`. **Nada más en el código importa esa función.**
 
-- Aceptar un plan **no** crea deuda.
-- Realizar un procedimiento **no** crea deuda.
+- Aceptar un `PlanTratamiento` **no** crea cargos.
+- Aceptar un `PlanItem` **no** crea cargos.
+- Realizar un procedimiento **no** crea cargos.
 - Caja muestra "procedimientos realizados sin cargo" como lista de trabajo, y **un humano decide**.
+
+**Las cuotas de ortodoncia NO son la excepción.** Aceptar el plan no las crea: **una persona de Caja crea el calendario en una acción aparte**, y esa acción llama a la misma `crearCargo()` N veces. **No escribas una variante automática "para cuotas"** — sería la excepción que se come la regla, justo en el caso más grande de la clínica (`REGLAS-DE-NEGOCIO.md` §1.9).
+
+**"Saldo" a secas no existe: hay cuatro** (§12.6 de `ARQUITECTURA.md`, ADR-013). Todo `Cargo` lleva `fechaExigibleEn`, y **nacer no es lo mismo que vencer**.
+
+**Los cuatro llevan `anuladoEn IS NULL`.** Lo de abajo es el filtro **adicional**:
+
+| Saldo | Filtro adicional |
+|---|---|
+| **Total cargado** — *nunca lo llames "contractual"* | — |
+| **Exigible** — el saldo por defecto | `fechaExigibleEn <= hoy` |
+| Vencido (mora) | `fechaExigibleEn < hoy` |
+| Futuro | `fechaExigibleEn > hoy` |
+
+Y un **quinto que no sale de `cargos`**: el **crédito a favor** = `Σ(pago.monto − pago.montoAplicado)` con `anuladoEn IS NULL` (§12.4). Los cuatro de arriba no ven un anticipo sin aplicar.
+
+**Un `Σ(monto − aplicado)` sin calificar es un bug.** Con las 18 cuotas de una ortodoncia registradas por adelantado, responde *"debe $1,080 hoy"* a un paciente que debe $60. **Cuentas por cobrar = exigible.**
+
+**Y "contractual" es un mal nombre:** ese saldo es Σ de los `Cargo` **que Caja creó**, no de lo que el paciente firmó — entre la aceptación del plan y la creación del calendario vale $0 mientras existe un contrato por $1,080. Llamarlo "contrato" es la afirmación jurídica que §8 acaba de quitar, colada por el rótulo.
 
 ---
 
@@ -151,14 +175,25 @@ PACIENTE → EXPEDIENTE → ODONTOGRAMA → DIAGNÓSTICO → PLAN DE TRATAMIENTO
 
 **Los datos clínicos y financieros no se borran nunca. No hay `DELETE`.**
 
+**El default de privilegios es RESTRICTIVO (ADR-012): una tabla nueva nace solo legible.** Escribirle exige un `GRANT` explícito en su propia migración. **Toda tabla pertenece a una de seis clases** y la prueba estructural falla el build si aparece una sin clasificar (`ARQUITECTURA.md` §4.2.1).
+
 Tablas **append-only** — `clident_app` tiene **solo `SELECT` e `INSERT`** sobre ellas (sin `UPDATE`, sin `DELETE`, a nivel de privilegios de PostgreSQL):
 
 - `eventos_odontograma`
 - `auditoria`
 - `movimientos_inventario`
 - `aplicaciones_pago`
+- `enmiendas_procedimiento` — la enmienda existe **para preservar el texto anterior**: con `UPDATE`, la preservación es ficción
+- `lineas_cargo` — es dinero descompuesto: editarlas desalinearía Σ(líneas) contra el monto del cargo
+- `procedimiento_dientes` — los dientes de un procedimiento son inmutables (§9); con `DELETE` se podría cambiar qué dientes cubrió
 
 No es una convención que puedas olvidar: **la base de datos rechaza el borrado.**
+
+**`DELETE` no se concede en ninguna parte** salvo los dos puentes editables (`diagnostico_dientes`, `plan_item_dientes`) y la proyección del odontograma (`estados_superficie`, que es derivada y regenerable). Ni `procedimientos`, ni `cargos`, ni `pagos`, ni `pacientes`, ni `diagnosticos`, ni `planes`, ni `citas`.
+
+> **Esta sección afirmaba todo lo anterior desde el Ciclo 0 y NO existía un solo `REVOKE` en el repositorio.** El único bloque de privilegios concedía `SELECT, INSERT, UPDATE, DELETE` sobre `ALL TABLES`, y `ALTER DEFAULT PRIVILEGES` se lo daba automáticamente a toda tabla futura. El append-only era **prosa**. Si volvés a ver esa forma, es una regresión: el mecanismo real está en `ARQUITECTURA.md` §4.2 y la prueba estructural de §4.2.4 lo vigila.
+
+**Lo que este modelo NO protege:** `clident_migrator` es dueño de las tablas y **puede reconcederse cualquier privilegio**. Los privilegios atan a `clident_app` —quien corre en producción—, no a las migraciones. Por eso `MIGRATION_DATABASE_URL` no existe en runtime.
 
 | Corrección de… | Se hace con… |
 |---|---|
@@ -169,7 +204,25 @@ No es una convención que puedas olvidar: **la base de datos rechaza el borrado.
 
 **Inmutable tras crearse:** `Procedimiento.realizadoEn`, `precioAplicadoCentavos`, `tratamientoId`, dientes y superficies. Dato equivocado → anular y volver a crear.
 
-Un procedimiento **ya cobrado** no se puede anular sin anular antes el cargo.
+**"Inmutable" es un privilegio de PostgreSQL, no una convención — y el orden importa.** `procedimientos` no puede ser append-only (necesita `UPDATE` para la nota de 12 h y para `ANULADO`), así que se le quita `UPDATE` **de tabla** y se le devuelve **solo sobre las columnas mutables**:
+
+```sql
+-- 1º REVOCAR de tabla. 2º CONCEDER por columna. NUNCA al revés.
+REVOKE UPDATE ON procedimientos FROM clident_app;
+GRANT UPDATE (estado, notas_clinicas, anulado_en, anulado_por_id,
+              motivo_anulacion, actualizado_en)
+  ON procedimientos TO clident_app;
+```
+
+> **⚠ NUNCA escribas `REVOKE UPDATE (columna) ON tabla`.** No hace nada si el rol tiene `UPDATE` de tabla. Docs de PostgreSQL: *"if a role has been granted privileges on a table, then revoking the same privileges from individual columns will have no effect."* **Esa forma estuvo en este archivo hasta el Ciclo 1 y era decorativa.** El privilegio por columna solo restringe cuando es la **única** fuente. Y revocar de tabla borra también los grants por columna → el orden inverso los pierde en silencio.
+
+Sin eso, "inmutable" sería justo lo que este proyecto existe para no tener: una regla que un agente viola con un `update` de aspecto razonable. Y es dinero → §1 exige la base.
+
+**`actualizado_en` va en el `GRANT` o todo `UPDATE` de Prisma falla** (`@updatedAt` la escribe siempre).
+
+**La lista canónica de qué es mutable vive en `ARQUITECTURA.md` §10.5 (`Procedimiento`) y §12.5 (`Cargo`, `Pago`).** No inventes: `montoCentavos` no se edita **jamás** — un monto equivocado se anula y se vuelve a crear.
+
+Un procedimiento **ya cobrado** no se puede anular sin anular antes el cargo. Y **un cargo o un pago con dinero aplicado no se pueden anular sin revertir antes las aplicaciones** — lo impide el `CHECK` de coherencia (`monto_aplicado_centavos = 0` en la rama `ANULADO`). Las aplicaciones no se borran: se compensan con **filas de reversa negativas, siempre por el monto completo**, porque `aplicaciones_pago` es append-only.
 
 ---
 
@@ -220,10 +273,14 @@ Con `SET` de sesión en vez de `SET LOCAL`, y con pooler en modo transacción (N
 
 > **Todo invariante que abarca varias filas se convierte en un invariante de una sola fila**, mediante un contador materializado + `CHECK`, mantenido por un `UPDATE ... SET x = x + $delta` atómico. **Nunca `SELECT` y después `INSERT`. Nunca read-modify-write en código de aplicación.**
 
+- **La sobreaplicación tiene DOS lados y necesita DOS contadores.** `cargos.monto_aplicado_centavos` impide aplicarle a un cargo más de lo que vale. `pagos.monto_aplicado_centavos` impide repartir de un pago más de lo que entró. **Con solo el primero, un pago de $100 se reparte en cinco cargos de $100 y cada aplicación pasa su `CHECK`.** Toda `AplicacionPago` mueve los dos, en la misma transacción.
+- **Los contadores son derivados y pueden derivar.** Un `CHECK` no detecta un contador en $50 cuando las aplicaciones suman $80. Las consultas de reconciliación (`ARQUITECTURA.md` §13.4) **deben devolver cero filas siempre**, y corren en la suite de integración.
+
 - **Nivel de aislamiento: `READ COMMITTED`.** Nunca `SERIALIZABLE` (exigiría bucles de reintento en cada escritura — justo lo que los agentes hacen mal).
-- **Orden determinista de bloqueo, siempre:** primero el `Pago`, después los `Cargo` ordenados por id ascendente. Materiales por id ascendente. Dientes por `(fdi, superficie)`. Sin esto: deadlocks.
+- **Orden determinista de bloqueo, siempre:** **todos los `Pago` por id ascendente, después todos los `Cargo` por id ascendente.** Materiales por id ascendente. Dientes por `(fdi, superficie)`. Sin esto: deadlocks. **En plural: anular un cargo pagado con dos abonos de dos pagos distintos toca varios pagos, y ése es el caso normal.**
 - `saldoDespues` de inventario **sale del `RETURNING`**, nunca se calcula en código.
-- La proyección del odontograma se actualiza **condicionalmente** (`AND ultimo_evento_en <= $nuevo`): un evento retroactivo no puede pisar uno más nuevo.
+- La proyección del odontograma se actualiza **condicionalmente** (`AND (ultimo_evento_en, ultimo_evento_creado_en) <= ($ocurridoEn, $creadoEn)`): un evento retroactivo no puede pisar uno más nuevo. **La tupla completa, no solo `ultimo_evento_en`** — el reducer desempata por los dos campos, y si el camino en vivo desempata por uno solo, los dos caminos divergen.
+- **`CONDICION_ANULADA` no se proyecta con un `UPDATE`: se RECALCULA** plegando la historia de esa `(fdi, superficie)`. El estado correcto sale del último evento **no anulado anterior**, que el evento de anulación no conoce. Proyectarlo incrementalmente deja dientes pintados mal, en silencio (`ARQUITECTURA.md` §10.1).
 
 ---
 

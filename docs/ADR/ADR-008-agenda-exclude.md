@@ -36,6 +36,23 @@ ALTER TABLE citas
   WHERE (estado <> 'CANCELADA');
 ```
 
+**Agregado en el Ciclo 1 (auditoría): el mismo constraint para el paciente.**
+
+```sql
+ALTER TABLE citas
+  ADD CONSTRAINT citas_paciente_sin_traslape
+  EXCLUDE USING gist (
+    clinica_id  WITH =,
+    paciente_id WITH =,
+    tstzrange(inicio_en, fin_en, '[)') WITH &&
+  )
+  WHERE (estado <> 'CANCELADA');
+```
+
+El constraint original protege al **odontólogo**. Nada impedía que **el paciente** tuviera dos citas simultáneas con dos odontólogos distintos — y el argumento de este ADR (*"la sucursal no relaja la física"*) aplica igual: **el paciente tampoco puede estar en dos sillones.** Son tres líneas y el mismo mecanismo.
+
+**`odontologo_id` es `NOT NULL`, y no es un detalle.** Si fuera nulable (para agendar "con el que esté libre"), el `EXCLUDE` **ignoraría esas filas** —en un índice GiST los `NULL` no colisionan, exactamente el mismo footgun que llevó al centinela `Superficie.COMPLETO` del ADR-005— y el constraint dejaría de bloquear justo las citas sin dueño asignado. **Falla abierto, en silencio.** Si algún día hace falta agendar sin odontólogo, se resuelve con un odontólogo centinela o una columna aparte, **no relajando la columna.**
+
 **Por qué cada pieza:**
 
 - **`tstzrange(..., '[)')`** — medio abierto. El operador `&&` sobre un rango `[)` **es exactamente** `nuevoInicio < finExistente AND nuevoFin > inicioExistente`, o sea, literalmente la regla que pidió el propietario. Solapamiento parcial, cita contenida, contenedora y rangos idénticos los atrapa **el mismo operador**. **No hay lógica booleana escrita a mano que se pueda escribir mal.** Y 09:00–10:00 con 10:00–11:00 **no** se solapan: pegadas, no solapadas.
@@ -67,7 +84,7 @@ catch (e) {
 
 **Aislamiento `SERIALIZABLE`.** Resolvería la carrera, pero empuja bucles de reintento a **cada** ruta de escritura del sistema — justo la sutileza que los agentes de IA hacen mal.
 
-**Incluir `sucursal_id` en el `EXCLUDE`.** Descartada, y es un error tentador: **un odontólogo no puede estar en Escalón y Santa Tecla a las 10:00. La sucursal no relaja la física.** El constraint es por odontólogo (ADR-002).
+**Incluir `sucursal_id` en el `EXCLUDE`.** Descartada, y es un error tentador: **un odontólogo no puede estar en Escalón y Santa Tecla a las 10:00. La sucursal no relaja la física.** El constraint es por odontólogo (ADR-002). *Por el mismo argumento, tampoco va en el constraint del paciente.*
 
 **Borrar las citas canceladas** para que no bloqueen. Descartada: contradice "no borrar datos". La exclusión parcial lo resuelve sin borrar.
 

@@ -125,13 +125,30 @@ Antes de reportar, releé tu diff y respondé cada una:
 - [ ] ¿Todo monto es `Int` en centavos y termina en `Centavos`?
 - [ ] ¿Hay algún join a `Tratamiento` para obtener un precio de algo ya creado? **(bug)**
 - [ ] ¿Algo crea un `Cargo` fuera del módulo de Caja? **(bug)**
+- [ ] ¿Aceptar un `PlanTratamiento` o un `PlanItem` crea cargos? **(bug: la aceptación y el calendario son dos acciones)**
+- [ ] ¿Se escribió una variante automática de `crearCargo()` "para cuotas"? **(bug: es la excepción que se come la regla)**
+- [ ] ¿Algún cambio de estado dispara otros en cascada silenciosa? **(bug: anular un plan NO toca sus ítems)**
+- [ ] ¿Se usó `PENDIENTE` como estado de `PlanItem`? **(es `PROPUESTO`; `PENDIENTE` es de `Cargo`)**
+- [ ] ¿Aparece `PROGRAMADO` como estado de `PlanItem`? **(la programación vive en Agenda)**
+- [ ] ¿Algo mueve un `PlanItem` a `COMPLETADO` por conteo de sesiones? **(lo decide un profesional)**
 - [ ] ¿Se hizo `SELECT` y después `INSERT` para validar un invariante? **(carrera)**
 - [ ] ¿Se toman varios locks sin orden determinista? **(deadlock)**
+- [ ] ¿Una `AplicacionPago` mueve **los dos** contadores (`cargos` y `pagos`)? **(sobreaplicación)**
+- [ ] ¿Se agregó un contador materializado sin su consulta de reconciliación? **(deriva silenciosa)**
+- [ ] ¿Algún `Σ(monto − aplicado)` **sin** `fechaExigibleEn <= hoy`? **(bug: dice que se debe hoy todo el contrato futuro)**
+- [ ] ¿Algún saldo o fórmula de crédito a favor **sin** excluir los anulados? **(bug: inventa plata / revive deuda)**
+- [ ] ¿Alguna consulta de reconciliación corriendo con `clident_app`? **(RLS la deja en cero y "cuadra" siempre)**
+- [ ] ¿Se escribió `REVOKE UPDATE (columna)` sobre un rol con `UPDATE` de tabla? **(no hace nada — ADR-012)**
+- [ ] ¿Se concedió `UPDATE` por columna **antes** de revocar el de tabla? **(el grant se pierde)**
+- [ ] ¿Tabla nueva sin su clase de privilegio declarada? **(ADR-012)**
+- [ ] ¿Se le devolvió `DELETE` o `TRUNCATE` a `clident_app` "para que pasen las pruebas"? **(desarma el append-only)**
 
 **Historial clínico**
 - [ ] ¿Hay algún `delete` de datos clínicos o financieros?
 - [ ] ¿Se sobrescribe algo que debería anularse con motivo?
 - [ ] ¿Se "normalizó" algún campo snapshot? **(bug)**
+- [ ] ¿Se proyecta `CONDICION_ANULADA` con un `UPDATE` incremental en vez de recalcular? **(bug clínico silencioso)**
+- [ ] ¿El desempate de la proyección usa la tupla `(ocurridoEn, creadoEn)` completa, igual que el reducer?
 
 **Alcance**
 - [ ] ¿Se implementó algo de una fase futura?
@@ -149,7 +166,8 @@ Estas cosas **no se implementan y después se muestran**. Se proponen, se discut
 - Agregar, quitar o cambiar una dependencia del stack.
 - Cambiar cómo funciona el aislamiento entre clínicas.
 - Cambiar la estrategia de concurrencia o de bloqueo.
-- Cambiar el modelo financiero o dónde nace la deuda.
+- Cambiar el modelo financiero o dónde se registra la cuenta por cobrar.
+- Cambiar los enums de estado o sus transiciones permitidas (`REGLAS-DE-NEGOCIO.md` §4.4 y §4.5).
 - Cambiar el modelo del odontograma o del historial clínico.
 - Cualquier cosa que contradiga un ADR existente.
 - Cualquier cosa marcada como "decisión pendiente" en `ARQUITECTURA.md` §19.
@@ -181,15 +199,15 @@ Estas cosas **no se implementan y después se muestran**. Se proponen, se discut
 | Fase | Alcance | Criterio de salida |
 |---|---|---|
 | **0. Fundación** | Scaffold Next.js + TS + Tailwind + shadcn. Prisma 7 + `prisma.config.ts` + Neon. Vitest. `infra/bootstrap-roles.sql`. Reglas ESLint. `src/lib/{money,dui,dientes,errors}.ts`. Documentación. | `npm test` verde en unitarias de `money` y `dui`. |
-| **1. Auth + Tenant + Roles + RLS** | `Clinica`, `Sucursal`, `Usuario`, `Membresia`. Auth.js + JWT. `requireCtx()`, permisos. **Migración SQL: RLS + FORCE + políticas + GRANTs.** Auditoría. Semilla de dientes. | **Pruebas de aislamiento, estructural de RLS e integridad referencial verdes.** |
-| **2. Agenda** | `Cita` + **migración SQL (`btree_gist` + `EXCLUDE` + `CHECK`)**. Mapeo de `23P01`. Calendario. Preselección de paciente. | **Prueba de solapamiento verde**, incluida la carrera concurrente. |
-| **3. Pacientes + Expediente** | `Paciente` + **migración SQL (columna generada `dui_enmascarado` + `CHECK`)**. `Expediente`, `AlertaMedica`. Búsqueda por nombre, teléfono y DUI. | **Prueba de enmascarado verde.** |
+| **1. Auth + Tenant + Roles + RLS** | `Clinica`, `Sucursal`, `Usuario`, `Membresia`. Auth.js + JWT. `requireCtx()`, permisos. **Migración SQL: RLS + FORCE + políticas + default restrictivo + GRANTs por clase de tabla (ADR-012).** Auditoría. Semilla de dientes. Script de bootstrap de clínica. **SIN el módulo del operador de plataforma (ADR-011).** | **Pruebas de aislamiento, estructural de RLS, estructural de privilegios e integridad referencial verdes.** |
+| **2. Agenda** | `Cita` + **migración SQL (`btree_gist` + **dos** `EXCLUDE` —odontólogo y paciente— + `CHECK`)**. Mapeo de `23P01`. Calendario. Preselección de paciente. | **Prueba de solapamiento verde**, incluida la carrera concurrente y el doble-agendado del paciente. |
+| **3. Pacientes + Expediente** | `Paciente` + **migración SQL (columna generada `dui_enmascarado` + `CHECK` de formato + `CHECK` de responsable completo)**. `Expediente`, `AlertaMedica`. **Responsable y contacto de emergencia como columnas denormalizadas** (§19 #11) — *no* una entidad aparte. Búsqueda por nombre, teléfono y DUI. | **Prueba de enmascarado verde.** Menor de 18 sin responsable → rechaza. |
 | **4. Catálogo** | Categorías, tratamientos, semilla de plantillas, `clonarCatalogo()`, CRUD con banderas. | Sin tratamientos duplicados por superficie. |
 | **5. Diagnósticos** | `Diagnostico`, `DiagnosticoDiente`, selector de alcance, picker multi-diente/multi-superficie. | Un dx con 3 dientes y 5 superficies se guarda y se lee. |
-| **6. Odontograma** | Eventos, proyección, `reducer.ts`, `rebuild.ts`, SVG 32+20, timeline, anulación. | **`rebuild()` idempotente; ningún evento se pierde.** |
-| **7. Planes** | Planes, ítems, snapshot al crear, estados independientes. | **Prueba de precio congelado verde.** |
-| **8. Procedimientos** | Procedimientos, enmiendas, anulación, generación de eventos, ventana de gracia. | Realizar un procedimiento pinta el odontograma y avanza el plan. |
-| **9. Caja** | Cargos, líneas, pagos, aplicaciones. Lista "realizados sin cargo". Pagos parciales. `DocumentoFiscal` vacío + `NoopDteProvider`. | **Prueba presupuesto≠deuda verde.** Saldos cuadran. |
+| **6. Odontograma** | Eventos, proyección, `reducer.ts`, `rebuild.ts`, SVG 32+20, timeline, anulación **recalculada** (§10.1). | **Equivalencia de caminos verde** (el rebuild no cambia lo que escribió el camino en vivo); ningún evento se pierde. |
+| **7. Planes** | Planes, ítems, snapshot al crear, estados independientes (enums en `REGLAS-DE-NEGOCIO.md` §4.4). | **Prueba de precio congelado verde.** |
+| **8. Procedimientos** | Procedimientos, enmiendas, anulación, generación de eventos, ventana de gracia. **Migración SQL: `REVOKE UPDATE ON procedimientos` + `GRANT UPDATE (columnas mutables)`** — en ese orden (ADR-012). | Realizar un procedimiento pinta el odontograma y avanza el plan. **Un `UPDATE` del precio aplicado → *permission denied*.** |
+| **9. Caja** | Cargos, líneas, pagos, aplicaciones. **Dos contadores + dos `CHECK`** (cargo y pago). Anulación de `Pago`. Reversas negativas (solo completas). **`fechaExigibleEn` + los cuatro saldos (ADR-013).** Lista "realizados sin cargo". Pagos parciales. `DocumentoFiscal` vacío + `NoopDteProvider`. | **Prueba presupuesto≠deuda verde.** **18 cuotas de $60 → exigible $60, no $1,080.** Saldos cuadran. **Reconciliación (§13.4): las consultas #1, #2 y #3 en cero, corriendo con `clident_migrator`.** (La #4 entra al criterio cuando se resuelva la pendiente #3.) |
 | **10. Inventario** | Materiales, movimientos, alertas, estado vacío. | Movimientos append-only. |
 | **11. Dashboard + Historial** | KPIs reales. Timeline clínico unificado. | Carlos ve el flujo completo de un paciente en una pantalla. |
 | **12. Endurecimiento + Responsividad** | Cobertura, `npm audit`, rate limit en login, respaldos, ADRs, revisión de permisos. Responsividad en desktop/laptop/tablet/móvil. | Todo verde en CI. Sin scroll horizontal innecesario. |
@@ -204,7 +222,8 @@ Estas cosas **no se implementan y después se muestran**. Se proponen, se discut
 - **Consumo clínico integrado con inventario.**
 - **Suscripciones, Stripe, registro público, onboarding automatizado.**
 - **Interfaz de sucursales** (la entidad existe; la UI no).
-- **Radiografías / almacenamiento de archivos.**
+- **Radiografías / almacenamiento de archivos.** Requiere ADR propio: sería el primer dato de paciente fuera de PostgreSQL (`ARQUITECTURA.md` §19 #6).
+- **Módulo del operador de plataforma.** Diseñado y aprobado (`ARQUITECTURA.md` §7), **aplazado hasta la clínica #2** (ADR-011). Mientras tanto, bootstrap por script.
 
 ---
 
