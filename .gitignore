@@ -1,0 +1,49 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files — NUNCA se commitean. DATABASE_URL y MIGRATION_DATABASE_URL viven acá
+# en local; en la nube, DATABASE_URL va en Vercel y MIGRATION_DATABASE_URL solo en
+# GitHub Actions (ADR-010, ARQUITECTURA.md §4.4).
+.env*
+
+# vercel
+.vercel
+
+# herramientas locales del desarrollador — no son del proyecto
+.neon
+.claude/
+.agents/
+skills-lock.json
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
