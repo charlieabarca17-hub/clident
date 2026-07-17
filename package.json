@@ -7,6 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "npm run prisma:generate",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
