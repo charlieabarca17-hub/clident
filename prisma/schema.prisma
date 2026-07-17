@@ -21,6 +21,12 @@ enum Rol {
   CAJA
 }
 
+enum TipoDocumentoResponsable {
+  DUI
+  PASAPORTE
+  CARNET_RESIDENTE
+}
+
 enum Denticion {
   PERMANENTE
   TEMPORAL
@@ -55,6 +61,7 @@ model Clinica {
   sucursales Sucursal[]
   membresias Membresia[]
   auditorias Auditoria[]
+  pacientes  Paciente[]
 
   @@map("clinicas")
 }
@@ -129,6 +136,36 @@ model Auditoria {
   @@index([clinicaId])
   @@index([usuarioId])
   @@map("auditoria")
+}
+
+model Paciente {
+  id                          String                    @id @default(cuid())
+  clinicaId                   String                    @map("clinica_id")
+  nombres                     String
+  apellidos                   String
+  fechaNacimiento             DateTime                  @map("fecha_nacimiento") @db.Date
+  dui                         String?
+  duiEnmascarado              String?                   @default(dbgenerated()) @map("dui_enmascarado")
+  telefono                    String
+  correo                      String?
+  direccion                   String?
+  responsableNombre           String?                   @map("responsable_nombre")
+  responsableTipoDocumento    TipoDocumentoResponsable? @map("responsable_tipo_documento")
+  responsableNumDocumento     String?                   @map("responsable_num_documento")
+  responsableTelefono         String?                   @map("responsable_telefono")
+  responsableParentesco       String?                   @map("responsable_parentesco")
+  contactoEmergenciaNombre    String                    @map("contacto_emergencia_nombre")
+  contactoEmergenciaTelefono  String                    @map("contacto_emergencia_telefono")
+  creadoEn                    DateTime                  @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn               DateTime                  @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, dui])
+  @@index([clinicaId, apellidos, nombres])
+  @@index([clinicaId, telefono])
+  @@map("pacientes")
 }
 
 model DienteRef {

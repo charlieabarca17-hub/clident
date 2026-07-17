@@ -27,7 +27,7 @@ export default async function setup(): Promise<void> {
   await migrator.connect();
   try {
     await migrator.query(
-      "TRUNCATE TABLE auditoria, membresias, sucursales, usuarios, clinicas RESTART IDENTITY CASCADE",
+      "TRUNCATE TABLE pacientes, auditoria, membresias, sucursales, usuarios, clinicas RESTART IDENTITY CASCADE",
     );
   } finally {
     await migrator.end();
