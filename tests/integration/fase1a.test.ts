@@ -6,6 +6,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sembrarDientes } from "../../prisma/seed/dientes.ts";
 import { DIENTES } from "@/lib/dientes";
 import { ErrorAgendaTraslape } from "@/lib/errors";
+import {
+  CrearAlertaMedicaSchema,
+  DesactivarAlertaMedicaSchema,
+} from "@/lib/validation/alertas-medicas";
 import { CrearCitaSchema, ReprogramarCitaSchema } from "@/lib/validation/citas";
 import { CrearPacienteSchema } from "@/lib/validation/pacientes";
 import type { TenantContext } from "@/server/auth/types";
@@ -13,6 +17,11 @@ import { establecerPasswordConInvitacion, hashTokenInvitacion } from "@/server/a
 import { listarMisMembresias, validarMembresiaActiva } from "@/server/auth/membresias";
 import { autenticarCredenciales } from "@/server/auth/usuarios";
 import { db } from "@/server/db/client";
+import {
+  crearAlertaMedica,
+  desactivarAlertaMedica,
+  listarAlertasMedicasActivas,
+} from "@/server/db/alertas-medicas";
 import {
   cancelarCita,
   crearCita,
@@ -276,10 +285,13 @@ describe("aislamiento RLS", () => {
 describe("estructura de seguridad", () => {
   it("toda tabla pública está clasificada", async () => {
     const clasificadas = [
+      "alertas_medicas",
       "auditoria",
       "citas",
       "clinicas",
+      "desactivaciones_alertas_medicas",
       "dientes_ref",
+      "expedientes",
       "membresias",
       "pacientes",
       "sucursales",
@@ -298,10 +310,10 @@ describe("estructura de seguridad", () => {
     const resultado = await migrator.query(
       `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-       WHERE n.nspname = 'public' AND c.relname IN ('clinicas','citas','sucursales','membresias','auditoria','pacientes')
+       WHERE n.nspname = 'public' AND c.relname IN ('alertas_medicas','clinicas','citas','desactivaciones_alertas_medicas','expedientes','sucursales','membresias','auditoria','pacientes')
        ORDER BY c.relname`,
     );
-    expect(resultado.rows).toHaveLength(6);
+    expect(resultado.rows).toHaveLength(9);
     expect(resultado.rows.every((fila) => fila.relrowsecurity && fila.relforcerowsecurity)).toBe(true);
   });
 
@@ -318,11 +330,11 @@ describe("estructura de seguridad", () => {
       `SELECT table_name, column_name, data_type, datetime_precision
        FROM information_schema.columns
        WHERE table_schema = 'public'
-         AND table_name IN ('clinicas', 'citas', 'sucursales', 'usuarios', 'membresias', 'auditoria', 'pacientes')
+         AND table_name IN ('alertas_medicas', 'clinicas', 'citas', 'desactivaciones_alertas_medicas', 'expedientes', 'sucursales', 'usuarios', 'membresias', 'auditoria', 'pacientes')
          AND data_type LIKE 'timestamp%'
        ORDER BY table_name, column_name`,
     );
-    expect(resultado.rows).toHaveLength(17);
+    expect(resultado.rows).toHaveLength(21);
     expect(resultado.rows.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(true);
     expect(resultado.rows.every(({ datetime_precision }) => datetime_precision === 3)).toBe(true);
   });
@@ -373,6 +385,9 @@ describe("estructura de seguridad", () => {
       usuarios: ["SELECT", "INSERT", "UPDATE"],
       membresias: ["SELECT", "INSERT", "UPDATE"],
       pacientes: ["SELECT", "INSERT", "UPDATE"],
+      expedientes: ["SELECT", "INSERT", "UPDATE"],
+      alertas_medicas: ["SELECT", "INSERT"],
+      desactivaciones_alertas_medicas: ["SELECT", "INSERT"],
       citas: ["SELECT", "INSERT", "UPDATE"],
       auditoria: ["SELECT", "INSERT"],
       dientes_ref: ["SELECT"],
@@ -391,18 +406,21 @@ describe("estructura de seguridad", () => {
   });
 
   it("append-only no concede UPDATE ni siquiera por columna", async () => {
-    const resultado = await migrator.query(
-      `SELECT column_name FROM information_schema.columns
-       WHERE table_schema = 'public' AND table_name = 'auditoria'
-         AND has_column_privilege('clident_app', 'public.auditoria', column_name, 'UPDATE')`,
-    );
-    expect(resultado.rows).toEqual([]);
+    for (const tabla of ["alertas_medicas", "auditoria", "desactivaciones_alertas_medicas"]) {
+      const resultado = await migrator.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = $1
+           AND has_column_privilege('clident_app', format('public.%I', $1), column_name, 'UPDATE')`,
+        [tabla],
+      );
+      expect(resultado.rows, tabla).toEqual([]);
+    }
   });
 
   it("clident_readonly tiene SELECT y ningún otro privilegio en toda tabla", async () => {
     const tablas = [
-      "auditoria", "clinicas", "citas", "dientes_ref", "membresias", "pacientes",
-      "sucursales", "superficies_diente", "usuarios",
+      "alertas_medicas", "auditoria", "clinicas", "citas", "desactivaciones_alertas_medicas", "dientes_ref", "expedientes",
+      "membresias", "pacientes", "sucursales", "superficies_diente", "usuarios",
     ];
     const verbos = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"];
     for (const tabla of tablas) {
@@ -426,7 +444,7 @@ describe("estructura de seguridad", () => {
        GROUP BY tablename ORDER BY tablename`,
     );
     expect(resultado.rows.map(({ tablename }) => tablename)).toEqual([
-      "auditoria", "citas", "clinicas", "membresias", "pacientes", "sucursales",
+      "alertas_medicas", "auditoria", "citas", "clinicas", "desactivaciones_alertas_medicas", "expedientes", "membresias", "pacientes", "sucursales",
     ]);
     for (const fila of resultado.rows) {
       expect(fila.tiene_migracion, `${fila.tablename}.migración`).toBe(true);
@@ -496,6 +514,11 @@ describe("paciente base", () => {
     pacienteAId = resultado.id;
     expect(resultado).toMatchObject({ duiEnmascarado: null, nombres: "Sofía" });
     expect("dui" in resultado).toBe(false);
+    const expediente = await migrator.query(
+      "SELECT clinica_id, paciente_id FROM expedientes WHERE paciente_id = $1",
+      [pacienteAId],
+    );
+    expect(expediente.rows).toEqual([{ clinica_id: clinicaA.clinicaId, paciente_id: pacienteAId }]);
   });
 
   it("permite el mismo DUI en clínicas distintas, pero no dos veces en la misma", async () => {
@@ -613,6 +636,162 @@ describe("paciente base", () => {
     expect(JSON.stringify(lista)).not.toContain(dui);
   });
 
+});
+
+describe("expediente clínico y alertas médicas", () => {
+  const contextoAdminA = (): TenantContext => ({
+    clinicaId: clinicaA.clinicaId,
+    usuarioId: clinicaA.usuarioId,
+    membresiaId: clinicaA.membresiaId,
+    roles: ["ADMINISTRADOR"],
+  });
+  const contextoOdontologoB = (): TenantContext => ({
+    clinicaId: clinicaB.clinicaId,
+    usuarioId: clinicaB.usuarioId,
+    membresiaId: clinicaB.membresiaId,
+    roles: ["ODONTOLOGO"],
+  });
+  const contextoRecepcionA = (): TenantContext => ({
+    clinicaId: clinicaA.clinicaId,
+    usuarioId: usuarioSoloAId,
+    membresiaId: "membresia-recepcion-a",
+    roles: ["RECEPCION"],
+  });
+
+  let pacienteAId: string;
+  let pacienteBId: string;
+  let expedienteAId: string;
+  let expedienteBId: string;
+  let alertaBId: string;
+
+  beforeAll(async () => {
+    await migrator.query(
+      `UPDATE membresias SET roles = ARRAY['ADMINISTRADOR', 'ODONTOLOGO']::"Rol"[]
+       WHERE id = $1`,
+      [clinicaA.membresiaId],
+    );
+    const [pacienteA, pacienteB] = await Promise.all([
+      crearPaciente(contextoAdminA(), CrearPacienteSchema.parse({
+        nombres: "Paciente", apellidos: "Expediente A", fechaNacimiento: "1990-01-20",
+        telefono: "7000-0200", contactoEmergencia: { nombre: "Contacto A", telefono: "7000-0201" },
+      })),
+      crearPaciente(contextoOdontologoB(), CrearPacienteSchema.parse({
+        nombres: "Paciente", apellidos: "Expediente B", fechaNacimiento: "1991-01-20",
+        telefono: "7000-0202", contactoEmergencia: { nombre: "Contacto B", telefono: "7000-0203" },
+      })),
+    ]);
+    pacienteAId = pacienteA.id;
+    pacienteBId = pacienteB.id;
+    const expedientes = await migrator.query(
+      "SELECT id, paciente_id FROM expedientes WHERE paciente_id = ANY($1::text[])",
+      [[pacienteAId, pacienteBId]],
+    );
+    expedienteAId = expedientes.rows.find(({ paciente_id }) => paciente_id === pacienteAId)!.id;
+    expedienteBId = expedientes.rows.find(({ paciente_id }) => paciente_id === pacienteBId)!.id;
+  });
+
+  const contextoOdontologoA = (): TenantContext => ({
+    clinicaId: clinicaA.clinicaId,
+    usuarioId: clinicaA.usuarioId,
+    membresiaId: clinicaA.membresiaId,
+    roles: ["ADMINISTRADOR", "ODONTOLOGO"],
+  });
+
+  it("crea exactamente un expediente por paciente y lo amarra a su clínica", async () => {
+    const resultado = await migrator.query(
+      "SELECT clinica_id, paciente_id FROM expedientes WHERE paciente_id = ANY($1::text[]) ORDER BY paciente_id",
+      [[pacienteAId, pacienteBId]],
+    );
+    const esperado = [
+      { clinica_id: clinicaA.clinicaId, paciente_id: pacienteAId },
+      { clinica_id: clinicaB.clinicaId, paciente_id: pacienteBId },
+    ].sort((a, b) => a.paciente_id.localeCompare(b.paciente_id));
+    expect(resultado.rows).toEqual(esperado);
+  });
+
+  it("reserva las alertas para personal clínico y no cruza clínicas", async () => {
+    const alerta = await crearAlertaMedica(contextoOdontologoB(), CrearAlertaMedicaSchema.parse({
+      pacienteId: pacienteBId,
+      titulo: "Alergia a penicilina",
+      detalle: "Confirmar antes de prescribir.",
+    }));
+    if (!alerta) throw new Error("El expediente de prueba debe existir.");
+    alertaBId = alerta.id;
+    expect(alerta).toMatchObject({ titulo: "Alergia a penicilina", creadaPorNombre: "Administrador de prueba" });
+
+    await expect(listarAlertasMedicasActivas(contextoRecepcionA(), pacienteAId)).rejects.toThrow(
+      "No tenés permiso para realizar esta acción.",
+    );
+    await expect(listarAlertasMedicasActivas(contextoOdontologoA(), pacienteBId)).resolves.toEqual([]);
+
+    const lecturaDirecta = await conContexto(
+      { usuarioId: clinicaA.usuarioId, clinicaId: clinicaA.clinicaId },
+      (cliente) => cliente.query("SELECT id FROM alertas_medicas WHERE id = $1", [alertaBId]),
+    );
+    expect(lecturaDirecta.rows).toEqual([]);
+  });
+
+  it("desactiva con motivo, deja auditoría y no permite una segunda desactivación", async () => {
+    await expect(desactivarAlertaMedica(
+      contextoOdontologoB(),
+      alertaBId,
+      DesactivarAlertaMedicaSchema.parse({ motivoDesactivacion: "El paciente confirmó que no presenta esa alergia." }),
+    )).resolves.toBe(true);
+    await expect(desactivarAlertaMedica(
+      contextoOdontologoB(),
+      alertaBId,
+      DesactivarAlertaMedicaSchema.parse({ motivoDesactivacion: "No debe sobrescribir el motivo original." }),
+    )).resolves.toBe(false);
+    await expect(listarAlertasMedicasActivas(contextoOdontologoB(), pacienteBId)).resolves.toEqual([]);
+
+    const auditoria = await migrator.query(
+      "SELECT accion FROM auditoria WHERE entidad_id = $1 ORDER BY creado_en",
+      [alertaBId],
+    );
+    expect(auditoria.rows).toEqual([
+      { accion: "ALERTA_MEDICA_CREADA" },
+      { accion: "ALERTA_MEDICA_DESACTIVADA" },
+    ]);
+  });
+
+  it("la base bloquea cruces entre clínicas y la credencial runtime no puede reactivar", async () => {
+    await expect(
+      migrator.query(
+        `INSERT INTO alertas_medicas (
+           id, clinica_id, expediente_id, titulo, creada_por_id
+         ) VALUES ($1, $2, $3, 'No debe cruzar clínica', $4)`,
+        [randomUUID(), clinicaA.clinicaId, expedienteBId, clinicaA.membresiaId],
+      ),
+    ).rejects.toMatchObject({ code: "23503" });
+
+    const alertaAId = randomUUID();
+    await migrator.query(
+      `INSERT INTO alertas_medicas (id, clinica_id, expediente_id, titulo, creada_por_id)
+       VALUES ($1, $2, $3, 'Alerta de prueba', $4)`,
+      [alertaAId, clinicaA.clinicaId, expedienteAId, clinicaA.membresiaId],
+    );
+    await expect(
+      migrator.query(
+        `INSERT INTO desactivaciones_alertas_medicas (
+           id, clinica_id, alerta_id, desactivada_por_id, motivo_desactivacion
+         ) VALUES ($1, $2, $3, $4, '   ')`,
+        [randomUUID(), clinicaA.clinicaId, alertaAId, clinicaA.membresiaId],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+
+    await expect(
+      conContexto(
+        { usuarioId: clinicaB.usuarioId, clinicaId: clinicaB.clinicaId },
+        (cliente) => cliente.query("UPDATE alertas_medicas SET titulo = 'No permitido' WHERE id = $1", [alertaBId]),
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+    await expect(
+      conContexto(
+        { usuarioId: clinicaB.usuarioId, clinicaId: clinicaB.clinicaId },
+        (cliente) => cliente.query("DELETE FROM desactivaciones_alertas_medicas WHERE alerta_id = $1", [alertaBId]),
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+  });
 });
 
 describe("Agenda", () => {

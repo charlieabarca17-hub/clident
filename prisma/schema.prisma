@@ -70,6 +70,9 @@ model Clinica {
   auditorias Auditoria[]
   pacientes  Paciente[]
   citas      Cita[]      @relation("CitaClinica")
+  expedientes                     Expediente[]
+  alertasMedicas                  AlertaMedica[]
+  desactivacionesAlertasMedicas   DesactivacionAlertaMedica[]
 
   @@map("clinicas")
 }
@@ -120,7 +123,9 @@ model Membresia {
 
   clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  citasComoOdontologo Cita[] @relation("CitaOdontologo")
+  citasComoOdontologo          Cita[]                       @relation("CitaOdontologo")
+  alertasCreadas               AlertaMedica[]               @relation("AlertaCreadaPor")
+  desactivacionesAlertasMedicas DesactivacionAlertaMedica[] @relation("AlertaDesactivadaPor")
 
   @@unique([usuarioId, clinicaId])
   @@unique([clinicaId, id])
@@ -171,12 +176,72 @@ model Paciente {
 
   clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   citas   Cita[]  @relation("CitaPaciente")
+  expediente Expediente?
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, dui])
   @@index([clinicaId, apellidos, nombres])
   @@index([clinicaId, telefono])
   @@map("pacientes")
+}
+
+// El expediente es el contenedor clínico 1:1 del paciente. Se crea en la misma
+// transacción que el paciente; la relación inversa queda opcional porque PostgreSQL
+// no puede exigir la existencia del hijo sin un trigger, que CLIDENT no utiliza.
+model Expediente {
+  id            String   @id @default(cuid())
+  clinicaId     String   @map("clinica_id")
+  pacienteId    String   @map("paciente_id")
+  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica  Clinica  @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  paciente Paciente @relation(fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  alertas  AlertaMedica[]
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, pacienteId])
+  @@map("expedientes")
+}
+
+// Una alerta registra una advertencia clínica visible solo a personal clínico.
+// Es append-only: su desactivación es otro registro inmutable, no un UPDATE.
+model AlertaMedica {
+  id              String   @id @default(cuid())
+  clinicaId       String   @map("clinica_id")
+  expedienteId    String   @map("expediente_id")
+  titulo          String
+  detalle         String?
+  creadaPorId     String   @map("creada_por_id")
+  creadoEn        DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  clinica       Clinica                     @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  expediente    Expediente                  @relation(fields: [clinicaId, expedienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  creadaPor     Membresia                   @relation("AlertaCreadaPor", fields: [clinicaId, creadaPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  desactivacion DesactivacionAlertaMedica?
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId, expedienteId])
+  @@map("alertas_medicas")
+}
+
+// Cerrar una alerta es un hecho clínico trazable. Solo puede existir un cierre por
+// alerta; para volver a advertir algo se crea una alerta nueva, sin reescribir historia.
+model DesactivacionAlertaMedica {
+  id                  String   @id @default(cuid())
+  clinicaId           String   @map("clinica_id")
+  alertaId            String   @map("alerta_id")
+  desactivadaPorId    String   @map("desactivada_por_id")
+  motivoDesactivacion String   @map("motivo_desactivacion")
+  desactivadaEn       DateTime @default(now()) @map("desactivada_en") @db.Timestamptz(3)
+
+  clinica          Clinica       @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  alerta           AlertaMedica  @relation(fields: [clinicaId, alertaId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  desactivadaPor   Membresia     @relation("AlertaDesactivadaPor", fields: [clinicaId, desactivadaPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, alertaId])
+  @@map("desactivaciones_alertas_medicas")
 }
 
 model Cita {

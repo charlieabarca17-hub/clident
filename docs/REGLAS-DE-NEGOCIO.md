@@ -214,7 +214,7 @@ Lo mismo aplica hacia atrás: un reporte de ingresos del año pasado debe reflej
 
 **Por qué:** el expediente clínico es un documento legal. Si un paciente reclama, si hay una demanda por mala praxis, o si la Junta de Vigilancia pide el expediente, la clínica tiene que poder mostrar **qué se supo, cuándo se supo y quién lo registró**. Un expediente que se puede editar sin dejar rastro no prueba nada — y un expediente que no prueba nada es peor que no tenerlo, porque da falsa seguridad.
 
-**Cómo se garantiza:** sobre las tablas del historial clínico, el sistema **no tiene permiso de borrar ni de modificar** en la base de datos. Solo puede agregar. Aunque un agente de IA escribiera código para borrar historia clínica, la base de datos rechazaría la operación.
+**Cómo se garantiza:** sobre las tablas del historial clínico, el sistema **no tiene permiso de borrar ni de modificar** en la base de datos. Solo puede agregar. Las alertas médicas y sus desactivaciones son registros separados: cerrar una alerta agrega un cierre con motivo, fecha y responsable; nunca reescribe ni reactiva la alerta original. Aunque un agente de IA escribiera código para borrar o reactivar historia clínica, la base de datos rechazaría la operación.
 
 ## 3.2 Las correcciones dejan trazabilidad
 
@@ -572,7 +572,7 @@ Y una cuarta, que no es una capa pero importa igual: **hay pruebas automáticas 
 
 **Una persona puede tener varios roles en la misma clínica.** El caso típico salvadoreño es el dueño que además atiende: **administrador + odontólogo**. Eso es normal y el sistema lo contempla desde el diseño.
 
-**Un administrador que no es odontólogo no puede escribir notas clínicas**, y no aparece en la lista de odontólogos de la agenda.
+**Un administrador que no es odontólogo no puede leer ni escribir contenido clínico** —incluidas las alertas médicas—, y no aparece en la lista de odontólogos de la agenda. Si además tiene el rol de odontólogo, la combinación de ambos roles le da ese acceso clínico.
 
 ---
 

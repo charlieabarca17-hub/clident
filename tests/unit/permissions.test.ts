@@ -10,14 +10,16 @@ describe("permisos por rol", () => {
     expect(tienePermiso(["RECEPCION", "CAJA"], "clinico:read")).toBe(false);
   });
 
-  it("el administrador posee todos los permisos definidos", () => {
+  it("el administrador administra sin acceder al expediente clínico", () => {
     expect(tienePermiso(["ADMINISTRADOR"], "configuracion:write")).toBe(true);
-    expect(tienePermiso(["ADMINISTRADOR"], "clinico:write")).toBe(true);
+    expect(tienePermiso(["ADMINISTRADOR"], "clinico:read")).toBe(false);
+    expect(tienePermiso(["ADMINISTRADOR"], "clinico:write")).toBe(false);
+    expect(tienePermiso(["ADMINISTRADOR", "ODONTOLOGO"], "clinico:write")).toBe(true);
   });
 
   it("mantiene exactamente la matriz canónica, incluidas las negaciones de datos sensibles", () => {
     expect(PERMISOS_POR_ROL).toEqual({
-      ADMINISTRADOR: PERMISOS,
+      ADMINISTRADOR: PERMISOS.filter((permiso) => !permiso.startsWith("clinico:")),
       ODONTOLOGO: [
         "agenda:read", "agenda:write", "paciente:read", "paciente:write",
         "paciente:read_pii", "clinico:read", "clinico:write", "catalogo:read",

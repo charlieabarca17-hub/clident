@@ -92,6 +92,11 @@ export async function crearPaciente(ctx: TenantContext, input: CrearPacienteInpu
       data: { clinicaId: ctx.clinicaId, ...datosParaCrear(input) },
       select: SELECT_LISTADO,
     });
+    // El expediente no tiene contenido clínico todavía, pero nace junto al paciente:
+    // ninguna alerta ni módulo clínico futuro puede quedar apuntando a un paciente sin ficha.
+    await tx.expediente.create({
+      data: { clinicaId: ctx.clinicaId, pacienteId: paciente.id },
+    });
     await registrarAuditoria(tx, ctx, "PACIENTE_CREADO", paciente.id);
     return toPacienteListadoDto(paciente);
   });
