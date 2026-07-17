@@ -149,7 +149,7 @@ Se **descartó** una extensión de Prisma que inyectara `clinicaId` automáticam
 
 | Rol | Quién lo usa | Privilegios | Superusuario |
 |---|---|---|---|
-| `clident_migrator` | Solo migraciones en CI/CD | Dueño de tablas, DDL, `BYPASSRLS` | **No** |
+| `clident_migrator` | Solo migraciones en CI/CD | Dueño de tablas, DDL, políticas explícitas de mantenimiento; **sin `BYPASSRLS`** (ADR-015) | **No** |
 | `clident_app` | Toda la aplicación en runtime | Solo DML. Sin DDL, sin `BYPASSRLS`, **no es dueño de nada** | **No** |
 | `clident_operador` | Consola del operador | Angosto (§7) | **No** — *APLAZADO a la clínica #2 (ADR-011). En la Fase 1 el bootstrap lo hace `clident_migrator` a mano.* |
 | `clident_readonly` | Diagnóstico | Solo `SELECT`, sujeto a RLS | **No** |
@@ -407,7 +407,7 @@ Se descartó una función `SECURITY DEFINER` que verificara la contraseña dentr
 **Cableado:** `OPERATOR_DATABASE_URL`, cliente Prisma separado en `src/server/db/operador.ts`, ESLint restringe su import a `src/server/operador/**`, rutas bajo `/operador/*`, guard sobre `Usuario.esOperadorPlataforma`.
 
 **Flujos:**
-- **Crear clínica** (una transacción): `Clinica(estado=PRUEBA)` → `Sucursal("Sede principal")` → buscar-o-crear `Usuario` → `Membresia(roles=[ADMINISTRADOR])` → clonar catálogo desde plantillas → `Auditoria`.
+- **Crear clínica** (una transacción, Fase 1): `Clinica(estado=PRUEBA)` → `Sucursal("Sede principal")` → buscar-o-crear `Usuario` → `Membresia(roles=[ADMINISTRADOR])` → `Auditoria`. El catálogo se clona en la Fase 4, cuando sus tablas existen (ADR-015).
 - **Invitar admin:** usuario sin contraseña + token de un solo uso → `/establecer-contrasena`.
 - **Suspender / reactivar:** `UPDATE clinicas SET estado='SUSPENDIDA'`. Como `requireCtx()` lee `Clinica.estado` por request, los usuarios quedan fuera en su siguiente request. Sin revocación de tokens, sin job.
 
@@ -432,7 +432,8 @@ export const PERMISOS_POR_ROL: Record<Rol, readonly Permiso[]> = {
 `ADMINISTRADOR + ODONTOLOGO` es la clínica salvadoreña típica (el dueño es odontólogo).
 
 ```sql
-ALTER TABLE membresias ADD CONSTRAINT membresia_con_rol CHECK (array_length(roles, 1) >= 1);
+ALTER TABLE membresias ADD CONSTRAINT membresia_con_rol
+  CHECK (cardinality(roles) >= 1 AND array_position(roles, NULL) IS NULL);
 CREATE INDEX ON membresias USING gin (roles);   -- consultar: roles @> ARRAY['ODONTOLOGO']::rol[]
 ```
 
@@ -568,7 +569,7 @@ Sin la tabla no hay FK, y sin FK un `fdi` inválido (19, 29, 56) solo lo atrapa 
 | Tabla `dientes_ref` | **Proyección en la base; existe para que haya FK.** |
 | Prueba | Afirma que tabla == constantes. |
 
-**`superficies_diente`** (global, ~250 filas, PK `[fdi, superficie]`, `COMPLETO` para los 52 dientes). FK `[fdi, superficie]` desde `EventoOdontograma`, `EstadoSuperficie`, `DiagnosticoDiente`, `PlanItemDiente`, `ProcedimientoDiente`.
+**`superficies_diente`** (global, 312 filas: seis por cada uno de los 52 dientes; PK `[fdi, superficie]`, `COMPLETO` para todos). FK `[fdi, superficie]` desde `EventoOdontograma`, `EstadoSuperficie`, `DiagnosticoDiente`, `PlanItemDiente`, `ProcedimientoDiente`.
 
 Hace **imposible** registrar "caries oclusal en el incisivo 11". Reemplaza la FK directa a `dientes_ref.fdi` (queda transitiva) y elimina la lógica de `esAnterior` dispersa en el código.
 
@@ -1048,7 +1049,7 @@ El odontograma tiene `rebuild()` como red. **El dinero y el stock no tenían nin
 >
 > Las políticas de §4.3 no llevan cláusula `TO` → aplican a `clident_app` y a `clident_readonly`. Un comando de línea de comandos **no pasa por `requireCtx()`**, así que nadie llamó a `set_config('app.clinica_id', ...)` → `current_setting(...)` es `NULL` → `clinica_id = NULL` → `NULL` → **cero filas de todo**. La consulta diría "todo cuadra" con la base entera descuadrada, y **el resultado sano y el enfermo son idénticos**.
 >
-> `clident_migrator` tiene `BYPASSRLS`, que además es lo que se quiere acá: reconciliar es una operación **de todas las clínicas a la vez**, no de una sesión.
+> `clident_migrator` tiene políticas explícitas de mantenimiento que le permiten reconciliar **todas las clínicas a la vez**, sin concederle el atributo global `BYPASSRLS` (ADR-015).
 >
 > **Guarda obligatoria:** antes de afirmar que cuadra, la prueba verifica que **hay filas que mirar** (`SELECT count(*) FROM cargos > 0`). Un chequeo que puede pasar por vacío tiene que demostrar que no está vacío.
 
@@ -1238,7 +1239,7 @@ Los roles se crean una sola vez por rama con `infra/bootstrap-roles.sql`, versio
 | `reversas` | Revertir dos veces la misma aplicación → `23505`. **Revertir una reversa → rechazado** (`CHECK` de signo). Reversa con monto distinto de `−original` → violación de FK. Reversa sin original → violación de FK. Reversa apuntando a una aplicación de **otra clínica** → violación de FK. Reversa con `pagoId` o `cargoId` distinto del original → violación de FK. Reversa sin motivo → viola `CHECK`. Tras revertir, el crédito a favor del paciente vuelve a `+monto` y el cargo vuelve a `PENDIENTE`. **Revertir $50 y reaplicar $30 en la misma transacción → cargo con $30 aplicados, tres filas en el historial, reconciliación en cero.** |
 | `estructura-privilegios` | **Toda tabla de `public` está clasificada** (§4.2.1) — *una tabla nueva sin clase no compila*. Ninguna append-only tiene `UPDATE`/`DELETE`/`TRUNCATE` para `clident_app`. **`has_column_privilege('clident_app','procedimientos','precio_aplicado_centavos','UPDATE')` es `false`** — ídem `realizado_en`, `tratamiento_id`, y `monto_centavos` en `cargos` y `pagos`. `clident_app` **no** tiene `DELETE` sobre `procedimientos`, `cargos`, `pagos`, `pacientes`, `diagnosticos`, `planes` ni `citas`. `clident_readonly` no tiene nada más que `SELECT`. Ningún rol de aplicación es superusuario ni tiene `BYPASSRLS` (`pg_roles`). |
 | `pago-anulado` | Un `Pago` anulado **no aporta crédito a favor**. Anular un pago con aplicaciones → viola el `CHECK`; tras revertirlas → commitea. Cargo o pago con `monto = 0` → viola `CHECK`. |
-| `bootstrap` | Sin `app.clinica_id`, un usuario ve solo sus membresías y cero pacientes. `clident_app` haciendo `INSERT` en `dientes_ref` → *permission denied*. Superficie inválida (OCLUSAL en el 11) → violación de FK. El script de bootstrap crea clínica + sede + admin + catálogo. **Las aserciones sobre `clident_operador` (`SELECT` en `pacientes` → *permission denied*) llegan con el rol, en su fase (§7, ADR-011).** |
+| `bootstrap` | Sin `app.clinica_id`, un usuario ve solo sus membresías y cero pacientes. `clident_app` haciendo `INSERT` en `dientes_ref` → *permission denied*. OCLUSAL no existe para el 11 en `superficies_diente`. El script de bootstrap crea clínica + sede + admin + auditoría; el catálogo llega en Fase 4 (ADR-015). **Las aserciones sobre `clident_operador` (`SELECT` en `pacientes` → *permission denied*) llegan con el rol, en su fase (§7, ADR-011).** |
 
 **La prueba estructural de RLS es la más valiosa del proyecto:** cuando dentro de un año un agente agregue el módulo de radiografías y olvide la política, el build falla en vez de filtrar imágenes de pacientes.
 
