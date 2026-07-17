@@ -27,6 +27,13 @@ enum TipoDocumentoResponsable {
   CARNET_RESIDENTE
 }
 
+// La Agenda solo distingue una cita vigente de una cancelada. NO_ASISTIO queda
+// fuera hasta que Carlos decida si debe liberar el horario (pendiente #1).
+enum EstadoCita {
+  PENDIENTE
+  CANCELADA
+}
+
 enum Denticion {
   PERMANENTE
   TEMPORAL
@@ -62,6 +69,7 @@ model Clinica {
   membresias Membresia[]
   auditorias Auditoria[]
   pacientes  Paciente[]
+  citas      Cita[]      @relation("CitaClinica")
 
   @@map("clinicas")
 }
@@ -74,6 +82,7 @@ model Sucursal {
   actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
   clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  citas   Cita[]  @relation("CitaSucursal")
 
   @@unique([clinicaId, id])
   @@index([clinicaId])
@@ -111,6 +120,7 @@ model Membresia {
 
   clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  citasComoOdontologo Cita[] @relation("CitaOdontologo")
 
   @@unique([usuarioId, clinicaId])
   @@unique([clinicaId, id])
@@ -160,12 +170,39 @@ model Paciente {
   actualizadoEn               DateTime                  @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
   clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  citas   Cita[]  @relation("CitaPaciente")
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, dui])
   @@index([clinicaId, apellidos, nombres])
   @@index([clinicaId, telefono])
   @@map("pacientes")
+}
+
+model Cita {
+  id                   String     @id @default(cuid())
+  clinicaId            String     @map("clinica_id")
+  sucursalId           String     @map("sucursal_id")
+  pacienteId           String     @map("paciente_id")
+  odontologoId         String     @map("odontologo_id")
+  inicioEn             DateTime   @map("inicio_en") @db.Timestamptz(3)
+  finEn                DateTime   @map("fin_en") @db.Timestamptz(3)
+  estado               EstadoCita @default(PENDIENTE)
+  motivo               String?
+  notasAdministrativas String?    @map("notas_administrativas")
+  creadoEn             DateTime   @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn        DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica    Clinica    @relation("CitaClinica", fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sucursal   Sucursal   @relation("CitaSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  paciente   Paciente   @relation("CitaPaciente", fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  odontologo Membresia @relation("CitaOdontologo", fields: [clinicaId, odontologoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId, inicioEn])
+  @@index([clinicaId, pacienteId])
+  @@index([clinicaId, odontologoId])
+  @@map("citas")
 }
 
 model DienteRef {

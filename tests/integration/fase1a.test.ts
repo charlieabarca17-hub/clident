@@ -5,12 +5,19 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { sembrarDientes } from "../../prisma/seed/dientes.ts";
 import { DIENTES } from "@/lib/dientes";
+import { ErrorAgendaTraslape } from "@/lib/errors";
+import { CrearCitaSchema, ReprogramarCitaSchema } from "@/lib/validation/citas";
 import { CrearPacienteSchema } from "@/lib/validation/pacientes";
 import type { TenantContext } from "@/server/auth/types";
 import { establecerPasswordConInvitacion, hashTokenInvitacion } from "@/server/auth/invitaciones";
 import { listarMisMembresias, validarMembresiaActiva } from "@/server/auth/membresias";
 import { autenticarCredenciales } from "@/server/auth/usuarios";
 import { db } from "@/server/db/client";
+import {
+  cancelarCita,
+  crearCita,
+  reprogramarCita,
+} from "@/server/db/citas";
 import {
   buscarPacientes,
   crearPaciente,
@@ -25,7 +32,7 @@ const migrationUrl = process.env.TEST_MIGRATION_DATABASE_URL!;
 const app = new pg.Pool({ connectionString: appUrl, max: 2 });
 const migrator = new pg.Pool({ connectionString: migrationUrl, max: 2 });
 
-type Bootstrap = { clinicaId: string; usuarioId: string; sucursalId: string };
+type Bootstrap = { clinicaId: string; usuarioId: string; sucursalId: string; membresiaId: string };
 
 async function crearClinica(nombre: string, correo: string): Promise<Bootstrap> {
   const sql = await readFile("infra/crear-clinica.sql", "utf8");
@@ -268,6 +275,7 @@ describe("estructura de seguridad", () => {
   it("toda tabla pública está clasificada", async () => {
     const clasificadas = [
       "auditoria",
+      "citas",
       "clinicas",
       "dientes_ref",
       "membresias",
@@ -288,10 +296,10 @@ describe("estructura de seguridad", () => {
     const resultado = await migrator.query(
       `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-       WHERE n.nspname = 'public' AND c.relname IN ('clinicas','sucursales','membresias','auditoria','pacientes')
+       WHERE n.nspname = 'public' AND c.relname IN ('clinicas','citas','sucursales','membresias','auditoria','pacientes')
        ORDER BY c.relname`,
     );
-    expect(resultado.rows).toHaveLength(5);
+    expect(resultado.rows).toHaveLength(6);
     expect(resultado.rows.every((fila) => fila.relrowsecurity && fila.relforcerowsecurity)).toBe(true);
   });
 
@@ -308,11 +316,11 @@ describe("estructura de seguridad", () => {
       `SELECT table_name, column_name, data_type, datetime_precision
        FROM information_schema.columns
        WHERE table_schema = 'public'
-         AND table_name IN ('clinicas', 'sucursales', 'usuarios', 'membresias', 'auditoria', 'pacientes')
+         AND table_name IN ('clinicas', 'citas', 'sucursales', 'usuarios', 'membresias', 'auditoria', 'pacientes')
          AND data_type LIKE 'timestamp%'
        ORDER BY table_name, column_name`,
     );
-    expect(resultado.rows).toHaveLength(13);
+    expect(resultado.rows).toHaveLength(17);
     expect(resultado.rows.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(true);
     expect(resultado.rows.every(({ datetime_precision }) => datetime_precision === 3)).toBe(true);
   });
@@ -324,6 +332,18 @@ describe("estructura de seguridad", () => {
     );
     expect(roles.rows).toHaveLength(3);
     expect(roles.rows.every((rol) => !rol.rolsuper && !rol.rolbypassrls)).toBe(true);
+
+    const privilegiosBase = await migrator.query(
+      `SELECT
+        has_database_privilege('clident_migrator', current_database(), 'CREATE') AS migrator_create,
+        has_database_privilege('clident_app', current_database(), 'CREATE') AS app_create,
+        has_database_privilege('clident_readonly', current_database(), 'CREATE') AS readonly_create`,
+    );
+    expect(privilegiosBase.rows[0]).toEqual({
+      migrator_create: true,
+      app_create: false,
+      readonly_create: false,
+    });
 
     const privilegios = await migrator.query(
       `SELECT
@@ -351,6 +371,7 @@ describe("estructura de seguridad", () => {
       usuarios: ["SELECT", "INSERT", "UPDATE"],
       membresias: ["SELECT", "INSERT", "UPDATE"],
       pacientes: ["SELECT", "INSERT", "UPDATE"],
+      citas: ["SELECT", "INSERT", "UPDATE"],
       auditoria: ["SELECT", "INSERT"],
       dientes_ref: ["SELECT"],
       superficies_diente: ["SELECT"],
@@ -378,7 +399,7 @@ describe("estructura de seguridad", () => {
 
   it("clident_readonly tiene SELECT y ningún otro privilegio en toda tabla", async () => {
     const tablas = [
-      "auditoria", "clinicas", "dientes_ref", "membresias", "pacientes",
+      "auditoria", "clinicas", "citas", "dientes_ref", "membresias", "pacientes",
       "sucursales", "superficies_diente", "usuarios",
     ];
     const verbos = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"];
@@ -403,11 +424,30 @@ describe("estructura de seguridad", () => {
        GROUP BY tablename ORDER BY tablename`,
     );
     expect(resultado.rows.map(({ tablename }) => tablename)).toEqual([
-      "auditoria", "clinicas", "membresias", "pacientes", "sucursales",
+      "auditoria", "citas", "clinicas", "membresias", "pacientes", "sucursales",
     ]);
     for (const fila of resultado.rows) {
       expect(fila.tiene_migracion, `${fila.tablename}.migración`).toBe(true);
       expect(fila.tiene_aplicacion, `${fila.tablename}.aplicación`).toBe(true);
+    }
+  });
+
+  it("Agenda conserva CHECK y los dos EXCLUDE de PostgreSQL", async () => {
+    const resultado = await migrator.query(
+      `SELECT conname, contype, pg_get_constraintdef(oid) AS definicion
+       FROM pg_constraint WHERE conrelid = 'public.citas'::regclass
+       ORDER BY conname`,
+    );
+    const porNombre = Object.fromEntries(
+      resultado.rows.map(({ conname, contype, definicion }) => [conname, { contype, definicion }]),
+    );
+    expect(porNombre.citas_rango_valido).toMatchObject({ contype: "c" });
+    expect(porNombre.citas_sin_traslape).toMatchObject({ contype: "x" });
+    expect(porNombre.citas_paciente_sin_traslape).toMatchObject({ contype: "x" });
+    for (const nombre of ["citas_sin_traslape", "citas_paciente_sin_traslape"] as const) {
+      expect(porNombre[nombre].definicion).toContain("tstzrange");
+      expect(porNombre[nombre].definicion).toContain("[)");
+      expect(porNombre[nombre].definicion).toContain("CANCELADA");
     }
   });
 });
@@ -557,6 +597,160 @@ describe("paciente base", () => {
       expect.objectContaining({ id: pacienteBId, duiEnmascarado: "********-8" }),
     ]));
     expect(JSON.stringify(lista)).not.toContain(dui);
+  });
+
+});
+
+describe("Agenda", () => {
+  const contextoA = (): TenantContext => ({
+    clinicaId: clinicaA.clinicaId,
+    usuarioId: clinicaA.usuarioId,
+    membresiaId: "membresia-admin-a",
+    roles: ["ADMINISTRADOR"],
+  });
+  const contextoB = (): TenantContext => ({
+    clinicaId: clinicaB.clinicaId,
+    usuarioId: clinicaB.usuarioId,
+    membresiaId: "membresia-odontologo-b",
+    roles: ["ODONTOLOGO"],
+  });
+
+  let odontologoAId: string;
+  let odontologoB2Id: string;
+  let pacienteAId: string;
+  let pacienteBId: string;
+  let pacienteB2Id: string;
+
+  async function crearOdontologo(clinicaId: string, correo: string): Promise<string> {
+    const usuarioId = randomUUID();
+    const membresiaId = randomUUID();
+    await migrator.query(
+      `WITH usuario AS (
+         INSERT INTO usuarios (id, correo, nombre, actualizado_en)
+         VALUES ($1, $2, 'Odontólogo Agenda', CURRENT_TIMESTAMP)
+       )
+       INSERT INTO membresias (id, clinica_id, usuario_id, roles, actualizado_en)
+       VALUES ($3, $4, $1, ARRAY['ODONTOLOGO']::"Rol"[], CURRENT_TIMESTAMP)`,
+      [usuarioId, correo, membresiaId, clinicaId],
+    );
+    return membresiaId;
+  }
+
+  function datosCita(
+    pacienteId: string,
+    odontologoId: string,
+    hora: string,
+    duracionMinutos = 60,
+  ) {
+    return CrearCitaSchema.parse({
+      pacienteId,
+      odontologoId,
+      fecha: "2030-01-17",
+      hora,
+      duracionMinutos,
+      motivo: "Control",
+    });
+  }
+
+  beforeAll(async () => {
+    odontologoAId = await crearOdontologo(clinicaA.clinicaId, "agenda-a@clident.test");
+    odontologoB2Id = await crearOdontologo(clinicaB.clinicaId, "agenda-b2@clident.test");
+    const [pacienteA, pacienteB, pacienteB2] = await Promise.all([
+      crearPaciente(contextoA(), CrearPacienteSchema.parse({
+        nombres: "Paciente", apellidos: "Agenda A", fechaNacimiento: "1990-01-20",
+        telefono: "7000-0010", contactoEmergencia: { nombre: "Contacto A", telefono: "7000-0011" },
+      })),
+      crearPaciente(contextoB(), CrearPacienteSchema.parse({
+        nombres: "Paciente", apellidos: "Agenda B", fechaNacimiento: "1991-01-20",
+        telefono: "7000-0012", contactoEmergencia: { nombre: "Contacto B", telefono: "7000-0013" },
+      })),
+      crearPaciente(contextoB(), CrearPacienteSchema.parse({
+        nombres: "Segundo", apellidos: "Paciente B", fechaNacimiento: "1992-01-20",
+        telefono: "7000-0014", contactoEmergencia: { nombre: "Contacto B2", telefono: "7000-0015" },
+      })),
+    ]);
+    pacienteAId = pacienteA.id;
+    pacienteBId = pacienteB.id;
+    pacienteB2Id = pacienteB2.id;
+  });
+
+  it("impide los cuatro solapamientos, permite adyacencia y protege al paciente", async () => {
+    await crearCita(contextoB(), datosCita(pacienteBId, clinicaB.membresiaId, "09:00"));
+
+    for (const [hora, duracion] of [["09:30", 60], ["09:15", 30], ["08:30", 120], ["09:00", 60]] as const) {
+      await expect(
+        crearCita(contextoB(), datosCita(pacienteB2Id, clinicaB.membresiaId, hora, duracion)),
+      ).rejects.toBeInstanceOf(ErrorAgendaTraslape);
+    }
+
+    await expect(
+      crearCita(contextoB(), datosCita(pacienteB2Id, clinicaB.membresiaId, "10:00")),
+    ).resolves.toMatchObject({ estado: "PENDIENTE", horaInicio: "10:00" });
+
+    await expect(
+      crearCita(contextoB(), datosCita(pacienteBId, odontologoB2Id, "09:00")),
+    ).rejects.toMatchObject({ code: "AGENDA_TRASLAPE", message: expect.stringContaining("paciente") });
+
+    await expect(
+      crearCita(contextoB(), datosCita(pacienteB2Id, odontologoB2Id, "09:00")),
+    ).resolves.toMatchObject({ odontologo: { id: odontologoB2Id } });
+  });
+
+  it("cancelar libera el horario sin borrar la cita", async () => {
+    const original = await crearCita(contextoB(), datosCita(pacienteBId, clinicaB.membresiaId, "12:00"));
+    const cancelada = await cancelarCita(contextoB(), original.id);
+    expect(cancelada).toMatchObject({ id: original.id, estado: "CANCELADA" });
+
+    await expect(
+      crearCita(contextoB(), datosCita(pacienteB2Id, clinicaB.membresiaId, "12:00")),
+    ).resolves.toMatchObject({ estado: "PENDIENTE" });
+
+    const auditoria = await migrator.query(
+      "SELECT accion FROM auditoria WHERE entidad_id = $1 ORDER BY creado_en",
+      [original.id],
+    );
+    expect(auditoria.rows.map(({ accion }) => accion)).toEqual(["CITA_CREADA", "CITA_CANCELADA"]);
+  });
+
+  it("reprogramar conserva la cita pero deja que PostgreSQL rechace el conflicto", async () => {
+    const cita = await crearCita(contextoB(), datosCita(pacienteBId, clinicaB.membresiaId, "14:00"));
+    await crearCita(contextoB(), datosCita(pacienteB2Id, clinicaB.membresiaId, "15:00"));
+    const conflicto = ReprogramarCitaSchema.parse({ fecha: "2030-01-17", hora: "15:00", duracionMinutos: 60 });
+    await expect(reprogramarCita(contextoB(), cita.id, conflicto)).rejects.toBeInstanceOf(ErrorAgendaTraslape);
+  });
+
+  it("en una carrera concurrente solo una reserva llega a persistir", async () => {
+    const resultados = await Promise.allSettled([
+      crearCita(contextoB(), datosCita(pacienteBId, clinicaB.membresiaId, "17:00")),
+      crearCita(contextoB(), datosCita(pacienteB2Id, clinicaB.membresiaId, "17:00")),
+    ]);
+    expect(resultados.filter((resultado) => resultado.status === "fulfilled")).toHaveLength(1);
+    const rechazado = resultados.find((resultado) => resultado.status === "rejected");
+    expect(rechazado).toMatchObject({ reason: expect.any(ErrorAgendaTraslape) });
+  });
+
+  it("RLS no deja ver ni cancelar una cita de otra clínica", async () => {
+    const citaA = await crearCita(contextoA(), datosCita(pacienteAId, odontologoAId, "09:00"));
+    const lectura = await conContexto(
+      { usuarioId: clinicaB.usuarioId, clinicaId: clinicaB.clinicaId },
+      (cliente) => cliente.query("SELECT id FROM citas WHERE id = $1", [citaA.id]),
+    );
+    expect(lectura.rows).toEqual([]);
+
+    await expect(cancelarCita(contextoB(), citaA.id)).resolves.toBeNull();
+    const estado = await migrator.query("SELECT estado FROM citas WHERE id = $1", [citaA.id]);
+    expect(estado.rows).toEqual([{ estado: "PENDIENTE" }]);
+  });
+
+  it("la FK compuesta rechaza una cita de una clínica apuntando al paciente de otra", async () => {
+    await expect(
+      migrator.query(
+        `INSERT INTO citas (
+           id, clinica_id, sucursal_id, paciente_id, odontologo_id, inicio_en, fin_en, actualizado_en
+         ) VALUES ($1, $2, $3, $4, $5, '2030-02-01 15:00:00+00', '2030-02-01 16:00:00+00', CURRENT_TIMESTAMP)`,
+        [randomUUID(), clinicaA.clinicaId, clinicaA.sucursalId, pacienteBId, odontologoAId],
+      ),
+    ).rejects.toMatchObject({ code: "23503" });
   });
 });
 
