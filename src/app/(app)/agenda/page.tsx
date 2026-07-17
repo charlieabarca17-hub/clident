@@ -109,7 +109,11 @@ export default async function AgendaPage({ searchParams }: { searchParams: Agend
                   {citas.map((cita) => (
                     <tr key={cita.id} className={cita.estado === "CANCELADA" ? "bg-neutral-50 text-neutral-500" : ""}>
                       <td className="whitespace-nowrap px-5 py-4 font-medium">{cita.horaInicio}–{cita.horaFin}</td>
-                      <td className="px-5 py-4">{cita.paciente.nombreCompleto}</td>
+                      <td className="px-5 py-4">
+                        <Link href={`/pacientes/${cita.paciente.id}`} className="font-medium text-neutral-900 underline-offset-4 hover:underline">
+                          {cita.paciente.nombreCompleto}
+                        </Link>
+                      </td>
                       <td className="px-5 py-4">
                         <span className="inline-flex items-center gap-2">
                           <span className="size-2.5 rounded-full" style={{ backgroundColor: cita.odontologo.colorAgenda ?? "#737373" }} />

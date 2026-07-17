@@ -20,6 +20,21 @@ type PacienteDetalleDb = PacienteListadoDb & {
   contactoEmergenciaTelefono: string;
 };
 
+/**
+ * Datos administrativos de la ficha. A diferencia del detalle PII, no incluye
+ * el DUI del paciente ni el número de documento de su responsable; recepción
+ * necesita atender y contactar, no ver identificaciones completas.
+ */
+type PacienteAdministrativoDb = PacienteListadoDb & {
+  correo: string | null;
+  direccion: string | null;
+  responsableNombre: string | null;
+  responsableTelefono: string | null;
+  responsableParentesco: string | null;
+  contactoEmergenciaNombre: string;
+  contactoEmergenciaTelefono: string;
+};
+
 function fechaCivil(fecha: Date): string {
   return fecha.toISOString().slice(0, 10);
 }
@@ -33,6 +48,24 @@ export function toPacienteListadoDto(paciente: PacienteListadoDb) {
     fechaNacimiento: fechaCivil(paciente.fechaNacimiento),
     telefono: paciente.telefono,
     duiEnmascarado: paciente.duiEnmascarado,
+  } as const;
+}
+
+/** Ficha administrativa disponible para cualquier rol con paciente:read. */
+export function toPacienteAdministrativoDto(paciente: PacienteAdministrativoDb) {
+  return {
+    ...toPacienteListadoDto(paciente),
+    correo: paciente.correo,
+    direccion: paciente.direccion,
+    responsable: paciente.responsableNombre === null ? null : {
+      nombre: paciente.responsableNombre,
+      telefono: paciente.responsableTelefono,
+      parentesco: paciente.responsableParentesco,
+    },
+    contactoEmergencia: {
+      nombre: paciente.contactoEmergenciaNombre,
+      telefono: paciente.contactoEmergenciaTelefono,
+    },
   } as const;
 }
 

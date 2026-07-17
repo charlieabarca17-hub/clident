@@ -16,11 +16,13 @@ import { db } from "@/server/db/client";
 import {
   cancelarCita,
   crearCita,
+  listarCitasPaciente,
   reprogramarCita,
 } from "@/server/db/citas";
 import {
   buscarPacientes,
   crearPaciente,
+  getPacienteAdministrativo,
   getPacienteDetalle,
   getPacienteParaAgenda,
   listarPacientes,
@@ -544,6 +546,7 @@ describe("paciente base", () => {
 
   it("aísla paciente y selector de Agenda entre clínicas", async () => {
     await expect(getPacienteParaAgenda(contextoA(), pacienteBId)).resolves.toBeNull();
+    await expect(getPacienteAdministrativo(contextoA(), pacienteBId)).resolves.toBeNull();
     await expect(getPacienteDetalle(contextoA(), pacienteBId)).resolves.toBeNull();
 
     const lecturaDirecta = await conContexto(
@@ -566,6 +569,17 @@ describe("paciente base", () => {
     const propio = await getPacienteParaAgenda(contextoB(), pacienteBId);
     expect(propio).toMatchObject({ id: pacienteBId, duiEnmascarado: "********-8" });
     expect("dui" in (propio ?? {})).toBe(false);
+  });
+
+  it("da a recepción una ficha administrativa, sin documentos completos", async () => {
+    const ficha = await getPacienteAdministrativo(contextoRecepcionA(), pacienteAId);
+    expect(ficha).toMatchObject({
+      id: pacienteAId,
+      responsable: { nombre: "Marta López", parentesco: "Madre" },
+      contactoEmergencia: { nombre: "Marta López", telefono: "7000-0000" },
+    });
+    expect(JSON.stringify(ficha)).not.toContain(dui);
+    expect("dui" in (ficha ?? {})).toBe(false);
   });
 
   it("permite buscar por teléfono del responsable sin devolver el DUI completo", async () => {
@@ -736,6 +750,11 @@ describe("Agenda", () => {
       (cliente) => cliente.query("SELECT id FROM citas WHERE id = $1", [citaA.id]),
     );
     expect(lectura.rows).toEqual([]);
+
+    await expect(listarCitasPaciente(contextoB(), pacienteAId)).resolves.toEqual([]);
+    await expect(listarCitasPaciente(contextoA(), pacienteAId)).resolves.toEqual([
+      expect.objectContaining({ id: citaA.id }),
+    ]);
 
     await expect(cancelarCita(contextoB(), citaA.id)).resolves.toBeNull();
     const estado = await migrator.query("SELECT estado FROM citas WHERE id = $1", [citaA.id]);

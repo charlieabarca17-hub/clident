@@ -135,6 +135,20 @@ export async function listarCitasDia(
   });
 }
 
+/** Las citas del paciente se muestran en su ficha, siempre bajo la misma clínica activa. */
+export async function listarCitasPaciente(ctx: TenantContext, pacienteId: string) {
+  requirePermiso(ctx, "agenda:read");
+  return conTenant(ctx, async (tx) => {
+    const citas = await tx.cita.findMany({
+      where: { clinicaId: ctx.clinicaId, pacienteId },
+      select: SELECT_CITA_AGENDA,
+      orderBy: { inicioEn: "desc" },
+      take: 20,
+    });
+    return citas.map(toCitaAgendaDto);
+  });
+}
+
 export async function crearCita(ctx: TenantContext, input: CrearCitaInput) {
   requirePermiso(ctx, "agenda:write");
   try {

@@ -3,7 +3,11 @@ import "server-only";
 import type { Prisma } from "./generated/client";
 import type { TenantContext } from "@/server/auth/types";
 import { requirePermiso } from "@/server/auth/permissions";
-import { toPacienteDetalleDto, toPacienteListadoDto } from "@/server/dto/pacientes";
+import {
+  toPacienteAdministrativoDto,
+  toPacienteDetalleDto,
+  toPacienteListadoDto,
+} from "@/server/dto/pacientes";
 import type { CrearPacienteInput } from "@/lib/validation/pacientes";
 
 import { conTenant, type TenantTransaction } from "./tenant";
@@ -25,6 +29,20 @@ const SELECT_DETALLE = {
   responsableNombre: true,
   responsableTipoDocumento: true,
   responsableNumDocumento: true,
+  responsableTelefono: true,
+  responsableParentesco: true,
+  contactoEmergenciaNombre: true,
+  contactoEmergenciaTelefono: true,
+} satisfies Prisma.PacienteSelect;
+
+// La ficha administrativa sirve a recepción. Deliberadamente no selecciona
+// `dui` ni `responsableNumDocumento`: la UI no puede filtrar una columna que
+// este selector nunca pidió a PostgreSQL.
+const SELECT_EXPEDIENTE_ADMINISTRATIVO = {
+  ...SELECT_LISTADO,
+  correo: true,
+  direccion: true,
+  responsableNombre: true,
   responsableTelefono: true,
   responsableParentesco: true,
   contactoEmergenciaNombre: true,
@@ -126,6 +144,21 @@ export async function getPacienteParaAgenda(ctx: TenantContext, id: string) {
       select: SELECT_LISTADO,
     });
     return paciente ? toPacienteListadoDto(paciente) : null;
+  });
+}
+
+/**
+ * Ficha que ve cualquier rol con paciente:read. La lectura PII queda separada
+ * abajo para que verla sea una decisión explícita y auditable.
+ */
+export async function getPacienteAdministrativo(ctx: TenantContext, id: string) {
+  requirePermiso(ctx, "paciente:read");
+  return conTenant(ctx, async (tx) => {
+    const paciente = await tx.paciente.findFirst({
+      where: { id, clinicaId: ctx.clinicaId },
+      select: SELECT_EXPEDIENTE_ADMINISTRATIVO,
+    });
+    return paciente ? toPacienteAdministrativoDto(paciente) : null;
   });
 }
 
