@@ -1,8 +1,14 @@
-# ADR-007 — La deuda nace exclusivamente en `Cargo`
+# ADR-007 — La cuenta por cobrar se registra exclusivamente en `Cargo`
 
-- **Estado:** Aceptado
+- **Estado:** Aceptado — **superseded PARCIALMENTE por [ADR-013](ADR-013-exigibilidad-de-cargos.md)** (solo la definición de "saldo pendiente")
 - **Fecha:** 2026-07-17
 - **Ciclo:** 0
+
+> **Qué sigue vigente de este ADR: todo lo importante.** Solo `crearCargo()` incorpora una obligación a las cuentas, desde Caja, invocada por un humano; presupuestar, aceptar y realizar **no** lo hacen; no hay ruta automática. Nada de eso cambió, y nada de eso debe cambiar.
+>
+> **Precisión conceptual (Ciclo 1).** Este ADR se llamaba *"La deuda nace exclusivamente en `Cargo`"* y afirmaba que *"la deuda existe **si y solo si** existe una fila de `Cargo`"*. **Eso era una afirmación jurídica que a CLIDENT no le toca hacer.** Cuándo nace una obligación entre la clínica y el paciente lo deciden el contrato, el consentimiento firmado, la ley y eventualmente un juez — un plan de ortodoncia firmado puede obligar desde el día de la firma, y ningún software cambia eso. **Lo que este ADR decide, y lo único que puede decidir, es cuándo CLIDENT reconoce una cuenta por cobrar.** El comportamiento del sistema es idéntico; la afirmación se acota a su competencia. *(El nombre del archivo se conserva para no romper enlaces.)*
+>
+> **Qué se superseded: una sola fila de la tabla de abajo** — *"Saldo pendiente = `Cargo.montoCentavos − montoAplicadoCentavos`"*. Con la ortodoncia por cuotas, esa fórmula responde *"debe $1,080 hoy"* a un paciente que debe $60. **Este ADR respondió *cuándo se registra*; nunca respondió *cuándo es exigible*, y asumió que eran la misma pregunta.** El ADR-013 las separa: hay cuatro saldos y el del sistema es el **exigible**.
 
 ## Contexto
 
@@ -14,16 +20,16 @@ El error clásico —y la razón de este ADR— es que un plan aceptado genere a
 
 ## Decisión
 
-**La deuda existe si y solo si existe una fila de `Cargo`. No hay ningún otro camino.**
+**Una obligación entra al estado de cuenta del paciente y a las cuentas por cobrar si y solo si existe una fila de `Cargo`. No hay ningún otro camino.**
 
-| Concepto | Dónde vive | ¿Es deuda? |
+| Concepto | Dónde vive | ¿Está en la cuenta por cobrar? |
 |---|---|---|
-| Presupuestado | `PlanItem.estado = PENDIENTE` | ❌ No |
+| Presupuestado | `PlanItem.estado = PROPUESTO` | ❌ No |
 | Aceptado | `PlanItem.estado = ACEPTADO` | ❌ **No** |
 | Realizado | `Procedimiento.estado = REALIZADO` | ❌ **No** |
 | Facturado / cobrado | `Cargo` creado explícitamente | ✅ **Aquí nace** |
 | Pagado | `AplicacionPago` cubre el `Cargo` | — |
-| Saldo pendiente | `Cargo.montoCentavos − montoAplicadoCentavos` | ✅ |
+| ~~Saldo pendiente~~ → **saldo exigible** (ADR-013) | `Σ(monto − aplicado)` con `anuladoEn IS NULL` **y `fechaExigibleEn <= hoy`** | ✅ |
 
 **No existe ninguna ruta automática de plan o procedimiento a `Cargo`.** Solo `crearCargo(ctx, ...)`, invocada desde el módulo de Caja por un usuario con permiso `caja:write`.
 
@@ -69,8 +75,21 @@ ALTER TABLE cargos ADD CONSTRAINT cargo_no_sobreaplicado
 - Si nadie lo hace, la clínica no cobra. Mitigación: la lista "realizados sin cargo" es visible y es la pantalla principal de Caja.
 
 **Seams futuros ya abiertos sin construir nada:**
-- **Crédito a favor** = `pago.monto − pago.montoAplicado`. El esquema ya permite un pago con menos aplicaciones que su monto. **Cero tablas nuevas después.**
+- **Crédito a favor** = `pago.montoCentavos − pago.montoAplicadoCentavos`. El esquema ya permite un pago con menos aplicaciones que su monto. **Cero tablas nuevas después.**
 - **Aplicar a documentos fiscales** = aplicar a un `Cargo` que lleva `documentoFiscalId`.
+
+> **Corrección del Ciclo 1 (auditoría).** El seam de crédito a favor **descansaba en una columna que nunca se declaró**: `pago.montoAplicado` se nombraba acá y en `ARQUITECTURA.md` §12.4, pero el único contador declarado estaba en `cargos`. Sin él, la fórmula daba siempre el monto completo del pago. Peor: sin `CHECK` del lado del pago, **un pago de $100 se podía repartir en cinco cargos de $100 y cada aplicación pasaba su `CHECK` individual** — $500 aplicados de $100 que entraron. Ahora hay **dos contadores y dos `CHECK`** (`ARQUITECTURA.md` §13.1). La decisión de este ADR no cambia; se corrige el mecanismo que la sostenía.
+
+## Ortodoncia por cuotas — resuelta por el ADR-013
+
+**Carlos confirmó en el Ciclo 1 que la ortodoncia es ingreso importante**, y eso tensionó este ADR hasta obligar a un ADR nuevo. El desenlace, para el agente que llegue acá primero:
+
+- **Este ADR sobrevive entero en lo que decidió.** **Aceptar el plan no crea nada.** Después, **una persona autorizada de Caja crea expresamente el calendario**: 18 `Cargo`, una fila por cuota. Sin ruta automática. Sin job. **Son dos acciones separadas y auditadas por separado** (`REGLAS-DE-NEGOCIO.md` §1.9) — la aceptación es clínica/comercial, la generación de cuotas es financiera.
+- **No existe —ni debe existir— una variante automática de `crearCargo()` "para cuotas".** El calendario es esa misma función llamada N veces por alguien que apretó un botón. Una versión automática sería la excepción que se come esta regla, justo en el caso más grande de la clínica.
+- **Lo que se agregó es `Cargo.fechaExigibleEn`** y la separación entre *registrarse* y *vencer*, que este ADR nunca hizo porque asumió que eran lo mismo.
+- **Lo que se superseded es la fórmula del saldo**, y solo eso. Ver [ADR-013](ADR-013-exigibilidad-de-cargos.md).
+
+`Tratamiento.permitePlanDePagos` **se quitó**: era una bandera booleana sin ningún mecanismo detrás, y el mecanismo real vive acá, en Caja, no en el catálogo.
 
 ## Costo de revertir
 

@@ -2,7 +2,7 @@
 
 - **Estado:** Aceptado
 - **Fecha:** 2026-07-17
-- **Ciclo:** 1
+- **Ciclo:** 0
 
 ## Contexto
 
