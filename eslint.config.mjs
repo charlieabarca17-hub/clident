@@ -45,6 +45,39 @@ const MENSAJE_PRISMA =
   "que quiera datos llama a un repositorio, nunca a Prisma. El repositorio recibe " +
   "ctx: TenantContext y filtra por clinicaId; ese filtro es lo que se pierde aca.";
 
+const MENSAJE_CLIENTE_DB =
+  "Solo src/server/auth/** puede acceder a usuarios por correo y solo src/server/db/** " +
+  "puede construir o transportar Prisma (CLAUDE.md §11, ARQUITECTURA.md §6.5). " +
+  "Un módulo de negocio recibe TenantContext y usa un repositorio, nunca db directo.";
+
+const IMPORTS_PRISMA = {
+  paths: [{ name: "@prisma/client", message: MENSAJE_PRISMA }],
+  patterns: [
+    {
+      group: [
+        "@prisma/client/*", ".prisma/client", ".prisma/client/*",
+        "@/server/db/generated/*", "**/server/db/generated/*", "**/db/generated/*",
+      ],
+      message: MENSAJE_PRISMA,
+    },
+  ],
+};
+
+const IMPORTS_PROTEGIDOS = {
+  ...IMPORTS_PRISMA,
+  paths: [
+    ...IMPORTS_PRISMA.paths,
+    { name: "@/server/db/client", message: MENSAJE_CLIENTE_DB },
+  ],
+  patterns: [
+    ...IMPORTS_PRISMA.patterns,
+    {
+      group: ["**/server/db/client", "**/db/client"],
+      message: MENSAJE_CLIENTE_DB,
+    },
+  ],
+};
+
 const prohibir = (nombres, message) =>
   formasDeAlcanzar(nombres).map((selector) => ({ selector, message }));
 
@@ -70,13 +103,7 @@ const eslintConfig = defineConfig([
       "no-restricted-imports": [
         "error",
         {
-          paths: [{ name: "@prisma/client", message: MENSAJE_PRISMA }],
-          patterns: [
-            {
-              group: ["@prisma/client/*", ".prisma/client", ".prisma/client/*"],
-              message: MENSAJE_PRISMA,
-            },
-          ],
+          ...IMPORTS_PROTEGIDOS,
         },
       ],
       "no-restricted-syntax": ["error", ...PROHIBIR_UNSAFE, ...PROHIBIR_RAW],
@@ -90,6 +117,17 @@ const eslintConfig = defineConfig([
     rules: { "no-restricted-imports": "off" },
   },
 
+  // Autenticación puede buscar la identidad global por correo. Las pruebas de integración
+  // también necesitan el cliente para demostrar RLS, pero ninguna puede importar Prisma
+  // ni el cliente generado directamente.
+  {
+    name: "clident/excepcion-identidad-y-pruebas",
+    files: ["src/server/auth/**", "tests/**"],
+    rules: {
+      "no-restricted-imports": ["error", IMPORTS_PRISMA],
+    },
+  },
+
   // src/server/db/raw/ es el unico lugar con SQL crudo — pero las variantes Unsafe
   // siguen prohibidas ACA TAMBIEN, en sus cuatro formas. La lista se vuelve a declarar
   // entera a proposito: en flat config, redeclarar una regla reemplaza sus opciones, asi
@@ -97,7 +135,7 @@ const eslintConfig = defineConfig([
   // SQL crudo.
   {
     name: "clident/excepcion-raw",
-    files: ["src/server/db/raw/**"],
+    files: ["src/server/db/raw/**", "src/server/db/tenant.ts"],
     rules: {
       "no-restricted-syntax": ["error", ...PROHIBIR_UNSAFE],
     },

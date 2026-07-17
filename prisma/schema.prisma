@@ -74,13 +74,15 @@ model Sucursal {
 }
 
 model Usuario {
-  id                   String   @id @default(cuid())
-  correo               String   @unique
-  nombre               String
-  passwordHash         String?  @map("password_hash")
-  esOperadorPlataforma Boolean  @default(false) @map("es_operador_plataforma")
-  creadoEn             DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
-  actualizadoEn        DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+  id                      String    @id @default(cuid())
+  correo                  String    @unique
+  nombre                  String
+  passwordHash            String?   @map("password_hash")
+  tokenInvitacionHash     String?   @unique @map("token_invitacion_hash")
+  tokenInvitacionExpiraEn DateTime? @map("token_invitacion_expira_en") @db.Timestamptz(3)
+  esOperadorPlataforma    Boolean   @default(false) @map("es_operador_plataforma")
+  creadoEn                DateTime  @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn           DateTime  @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
   membresias Membresia[]
   auditorias Auditoria[]

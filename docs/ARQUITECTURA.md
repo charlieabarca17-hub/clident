@@ -351,7 +351,7 @@ Siempre podés ver **tus propias** membresías sin clínica activa; y todas las 
 4. `/elegir-clinica`: se fija **solo** `app.usuario_id`; se listan las membresías activas con su clínica, excluyendo `SUSPENDIDA`.
 5. 0 membresías → error. 1 → autoselección. >1 → selector.
 6. `POST /elegir-clinica`: el servidor **revalida** membresía activa + clínica `ACTIVA|PRUEBA`. Recién ahí `clinicaId` entra en la sesión.
-7. Cada request: `requireCtx()` **relee `Membresia` + `Clinica.estado`** (consulta indexada; **no cachear**) y fija ambos GUCs.
+7. Cada request: `requireCtx()` **relee `Membresia` + `Clinica.estado`** (consulta indexada; **no cachear**) y produce el `TenantContext`; el repositorio lo entrega a `conTenant()`, que fija ambos GUCs dentro de esa transacción.
 
 **El `clinicaId` de la sesión nunca se cree por sí solo.** El JWT está firmado, pero puede quedar obsoleto: la relectura por request es lo que hace efectivas la revocación de membresía y la suspensión de clínica.
 
@@ -1278,7 +1278,7 @@ Ninguna bloquea el arranque. **Revisadas y ampliadas en la auditoría del Ciclo 
 | 5 | **¿El odontólogo ve todos los pacientes o solo los suyos?** Hoy: todos. | Fase 3 | Un `where` |
 | 6 | **¿Radiografías / imágenes?** **Sería el primer dato de paciente que vive fuera de PostgreSQL** — ver nota abajo. | Antes de Fase 3 | **ADR de aislamiento propio + 9ª pieza de stack** |
 | 7 | **Política de mora.** ¿Desde el día siguiente al vencimiento? ¿Días de gracia? La mecánica está (§12.6); el umbral es del propietario. | Fase 9 | Barato |
-| 8 | **Invitación del primer admin:** token de un solo uso (recomendado) vs contraseña temporal. | Fase 1 | Barato |
+| 8 | **RESUELTO en Ciclo 4B:** token aleatorio de un solo uso, almacenado únicamente como SHA-256, con 24 h de vigencia y consumo atómico al establecer una contraseña Argon2id. | Fase 1 | Resuelto |
 | 9 | **¿Cómo se devuelve el efectivo?** El sistema sabe reconocer crédito a favor (§12.4); **no existe entidad de dinero que sale**. | Antes de Fase 9 | **Migración de datos financieros** |
 | 10 | **Precio de una sesión.** `permiteMultiplesSesiones` existe; el precio por sesión **no está definido** — ver nota abajo. | Fase 7/8 | **Migración: `precioAplicadoCentavos` es inmutable** |
 | 11 | **Paciente menor de edad.** Resuelto en el Ciclo 1 con columnas denormalizadas (§19 nota). Queda: **¿`numeroExpediente` correlativo por clínica?** Hoy un menor sin DUI no tiene identificador. | Fase 3 | Columna + backfill |
