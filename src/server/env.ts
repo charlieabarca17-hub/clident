@@ -11,6 +11,10 @@ const esquemaRuntime = z.object({
   DATABASE_URL: urlPostgres,
 });
 
+const esquemaAuth = z.object({
+  AUTH_SECRET: z.string().min(32),
+});
+
 /**
  * Valida los secretos que puede conocer la aplicación en runtime.
  *
@@ -28,4 +32,10 @@ export function leerEntornoRuntime(
   }
 
   return esquemaRuntime.parse(entrada);
+}
+
+export function leerEntornoAuth(
+  entrada: Readonly<Record<string, string | undefined>> = process.env,
+) {
+  return esquemaAuth.parse(entrada);
 }

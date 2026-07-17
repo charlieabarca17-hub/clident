@@ -5,6 +5,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { sembrarDientes } from "../../prisma/seed/dientes.ts";
 import { DIENTES } from "@/lib/dientes";
+import { establecerPasswordConInvitacion, hashTokenInvitacion } from "@/server/auth/invitaciones";
+import { listarMisMembresias, validarMembresiaActiva } from "@/server/auth/membresias";
+import { autenticarCredenciales } from "@/server/auth/usuarios";
+import { db } from "@/server/db/client";
+import { conTenant, conUsuario } from "@/server/db/tenant";
 
 const appUrl = process.env.TEST_DATABASE_URL!;
 const migrationUrl = process.env.TEST_MIGRATION_DATABASE_URL!;
@@ -85,7 +90,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await Promise.all([app.end(), migrator.end()]);
+  await Promise.all([app.end(), migrator.end(), db.$disconnect()]);
 });
 
 describe("bootstrap y referencias globales", () => {
@@ -297,7 +302,7 @@ describe("estructura de seguridad", () => {
          AND data_type LIKE 'timestamp%'
        ORDER BY table_name, column_name`,
     );
-    expect(resultado.rows).toHaveLength(10);
+    expect(resultado.rows).toHaveLength(11);
     expect(resultado.rows.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(true);
     expect(resultado.rows.every(({ datetime_precision }) => datetime_precision === 3)).toBe(true);
   });
@@ -393,5 +398,112 @@ describe("estructura de seguridad", () => {
       expect(fila.tiene_migracion, `${fila.tablename}.migración`).toBe(true);
       expect(fila.tiene_aplicacion, `${fila.tablename}.aplicación`).toBe(true);
     }
+  });
+});
+
+describe("autenticación y contexto de Fase 1B", () => {
+  it("conUsuario solo descubre las membresías propias", async () => {
+    const filas = await conUsuario(usuarioSoloAId, (tx) =>
+      tx.membresia.findMany({ select: { clinicaId: true } }),
+    );
+    expect(filas).toEqual([{ clinicaId: clinicaA.clinicaId }]);
+  });
+
+  it("conTenant fija ambos GUCs dentro de una sola transacción", async () => {
+    const filas = await conTenant(
+      { usuarioId: usuarioSoloAId, clinicaId: clinicaA.clinicaId },
+      (tx) => tx.sucursal.findMany({ select: { clinicaId: true } }),
+    );
+    expect(filas).toEqual([{ clinicaId: clinicaA.clinicaId }]);
+  });
+
+  it("revalida membresía activa y rechaza otra clínica", async () => {
+    await expect(validarMembresiaActiva(usuarioSoloAId, clinicaA.clinicaId)).resolves.toMatchObject({
+      clinicaId: clinicaA.clinicaId,
+      roles: ["RECEPCION"],
+    });
+    await expect(validarMembresiaActiva(usuarioSoloAId, clinicaB.clinicaId)).resolves.toBeNull();
+  });
+
+  it("expulsa una clínica suspendida o vencida en la siguiente revalidación", async () => {
+    const usuarioCompartidoId = clinicaA.usuarioId;
+    await migrator.query("UPDATE clinicas SET estado = 'SUSPENDIDA' WHERE id = $1", [clinicaB.clinicaId]);
+    try {
+      await expect(validarMembresiaActiva(usuarioCompartidoId, clinicaB.clinicaId)).resolves.toBeNull();
+      const visibles = await listarMisMembresias({ usuarioId: usuarioCompartidoId });
+      expect(visibles.map(({ clinicaId }) => clinicaId)).not.toContain(clinicaB.clinicaId);
+    } finally {
+      await migrator.query("UPDATE clinicas SET estado = 'PRUEBA' WHERE id = $1", [clinicaB.clinicaId]);
+    }
+
+    await migrator.query(
+      "UPDATE clinicas SET vigente_hasta = CURRENT_TIMESTAMP - INTERVAL '1 day' WHERE id = $1",
+      [clinicaB.clinicaId],
+    );
+    try {
+      await expect(validarMembresiaActiva(usuarioCompartidoId, clinicaB.clinicaId)).resolves.toBeNull();
+      const visibles = await listarMisMembresias({ usuarioId: usuarioCompartidoId });
+      expect(visibles.map(({ clinicaId }) => clinicaId)).not.toContain(clinicaB.clinicaId);
+    } finally {
+      await migrator.query("UPDATE clinicas SET vigente_hasta = NULL WHERE id = $1", [clinicaB.clinicaId]);
+    }
+  });
+
+  it("rechaza credenciales inexistentes, incorrectas o sin contraseña establecida", async () => {
+    await expect(
+      autenticarCredenciales({ correo: "nadie@clident.test", password: "Password-seguro-123" }),
+    ).resolves.toBeNull();
+    await expect(
+      autenticarCredenciales({ correo: "solo-a@clident.test", password: "Password-seguro-123" }),
+    ).resolves.toBeNull();
+  });
+
+  it("rechaza una invitación vencida sin alterar la identidad", async () => {
+    const usuarioId = randomUUID();
+    const token = "token-vencido-de-prueba-con-entropia-suficiente-123456";
+    await migrator.query(
+      `INSERT INTO usuarios (id, correo, nombre, token_invitacion_hash, token_invitacion_expira_en, actualizado_en)
+       VALUES ($1, 'invitado-vencido@clident.test', 'Invitado vencido', $2,
+               CURRENT_TIMESTAMP - INTERVAL '1 hour', CURRENT_TIMESTAMP)`,
+      [usuarioId, hashTokenInvitacion(token)],
+    );
+
+    await expect(establecerPasswordConInvitacion(token, "Password-seguro-123")).resolves.toBeNull();
+    const resultado = await migrator.query(
+      "SELECT password_hash, token_invitacion_hash FROM usuarios WHERE id = $1",
+      [usuarioId],
+    );
+    expect(resultado.rows[0]).toEqual({
+      password_hash: null,
+      token_invitacion_hash: hashTokenInvitacion(token),
+    });
+  });
+
+  it("consume la invitación una sola vez y permite autenticar con Argon2id", async () => {
+    const token = "token-de-prueba-con-entropia-suficiente-123456789";
+    await migrator.query(
+      `UPDATE usuarios SET password_hash = NULL, token_invitacion_hash = $1,
+         token_invitacion_expira_en = CURRENT_TIMESTAMP + INTERVAL '1 hour'
+       WHERE id = $2`,
+      [hashTokenInvitacion(token), usuarioSoloAId],
+    );
+
+    await expect(establecerPasswordConInvitacion(token, "Password-seguro-123")).resolves.toMatchObject({
+      id: usuarioSoloAId,
+    });
+    await expect(establecerPasswordConInvitacion(token, "Otro-password-123")).resolves.toBeNull();
+    await expect(
+      autenticarCredenciales({ correo: "SOLO-A@CLIDENT.TEST", password: "Password-seguro-123" }),
+    ).resolves.toMatchObject({ id: usuarioSoloAId, email: "solo-a@clident.test" });
+    await expect(
+      autenticarCredenciales({ correo: "solo-a@clident.test", password: "Password-incorrecto-123" }),
+    ).resolves.toBeNull();
+    const resultado = await migrator.query(
+      "SELECT password_hash, token_invitacion_hash, token_invitacion_expira_en FROM usuarios WHERE id = $1",
+      [usuarioSoloAId],
+    );
+    expect(resultado.rows[0].password_hash).toMatch(/^\$argon2id\$/);
+    expect(resultado.rows[0].token_invitacion_hash).toBeNull();
+    expect(resultado.rows[0].token_invitacion_expira_en).toBeNull();
   });
 });
