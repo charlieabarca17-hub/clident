@@ -214,6 +214,12 @@ Estas cosas **no se implementan y después se muestran**. Se proponen, se discut
 
 **Dependencias:** 1 bloquea todo. 4 bloquea 7. 5 bloquea 6 y 7. 7 bloquea 8. 8 bloquea 9. Las fases 2, 3 y 10 son independientes tras la 1.
 
+**Aclaración de ejecución:** aunque las fases 2 y 3 son funcionalmente independientes tras la 1,
+`Cita` tiene una FK compuesta hacia `Paciente`. Por tanto, la ejecución comienza con un segmento
+mínimo de la fase 3 (identidad, clínica y búsqueda del paciente), continúa con el motor y la UI de
+la fase 2, y completa después el expediente de la fase 3. Esta partición conserva el modelo de
+datos y evita crear una agenda que no pueda persistirse con integridad referencial.
+
 **Recomendación:** entregar 1→2→3 primero y usar esa agenda con una clínica real antes de diseñar en detalle el odontograma y Caja, que son las partes caras. Una semana de uso real cambia supuestos que hoy son teoría.
 
 ## Fuera de alcance hasta nuevo aviso
