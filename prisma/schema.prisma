@@ -1,0 +1,12 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/server/db/generated"
+  runtime  = "nodejs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Los modelos llegan con sus fases autorizadas. Este archivo existe desde Fase 0 para
+// fijar Prisma 7, su cliente generado y las migraciones versionadas desde el inicio.

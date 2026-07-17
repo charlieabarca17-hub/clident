@@ -30,10 +30,15 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files — NUNCA se commitean. DATABASE_URL y MIGRATION_DATABASE_URL viven acá
-# en local; en la nube, DATABASE_URL va en Vercel y MIGRATION_DATABASE_URL solo en
-# GitHub Actions (ADR-010, ARQUITECTURA.md §4.4).
+# env files — NUNCA se commitean. DATABASE_URL vive localmente y luego en Vercel;
+# MIGRATION_DATABASE_URL solo existe en GitHub Actions, nunca en runtime ni en local
+# (ADR-010, ARQUITECTURA.md §4.4).
 .env*
+!.env.example
+
+# Prisma 7 genera un cliente tipado localmente desde prisma/schema.prisma.
+# El cliente se regenera con `npm run prisma:generate`; no es fuente autoritativa.
+/src/server/db/generated/
 
 # vercel
 .vercel
