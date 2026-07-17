@@ -8,5 +8,146 @@ datasource db {
   provider = "postgresql"
 }
 
-// Los modelos llegan con sus fases autorizadas. Este archivo existe desde Fase 0 para
-// fijar Prisma 7, su cliente generado y las migraciones versionadas desde el inicio.
+enum EstadoClinica {
+  ACTIVA
+  SUSPENDIDA
+  PRUEBA
+}
+
+enum Rol {
+  ADMINISTRADOR
+  ODONTOLOGO
+  RECEPCION
+  CAJA
+}
+
+enum Denticion {
+  PERMANENTE
+  TEMPORAL
+}
+
+enum TipoDiente {
+  INCISIVO
+  CANINO
+  PREMOLAR
+  MOLAR
+}
+
+enum Superficie {
+  COMPLETO
+  MESIAL
+  DISTAL
+  VESTIBULAR
+  PALATINA
+  LINGUAL
+  INCISAL
+  OCLUSAL
+}
+
+model Clinica {
+  id            String        @id @default(cuid())
+  nombre        String
+  estado        EstadoClinica @default(PRUEBA)
+  vigenteHasta  DateTime?     @map("vigente_hasta") @db.Timestamptz(3)
+  creadoEn      DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn DateTime      @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  sucursales Sucursal[]
+  membresias Membresia[]
+  auditorias Auditoria[]
+
+  @@map("clinicas")
+}
+
+model Sucursal {
+  id            String   @id @default(cuid())
+  clinicaId     String   @map("clinica_id")
+  nombre        String
+  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId])
+  @@map("sucursales")
+}
+
+model Usuario {
+  id                   String   @id @default(cuid())
+  correo               String   @unique
+  nombre               String
+  passwordHash         String?  @map("password_hash")
+  esOperadorPlataforma Boolean  @default(false) @map("es_operador_plataforma")
+  creadoEn             DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn        DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  membresias Membresia[]
+  auditorias Auditoria[]
+
+  @@map("usuarios")
+}
+
+model Membresia {
+  id            String   @id @default(cuid())
+  clinicaId     String   @map("clinica_id")
+  usuarioId     String   @map("usuario_id")
+  roles         Rol[]
+  activa        Boolean  @default(true)
+  jvpo          String?
+  especialidad  String?
+  colorAgenda   String?  @map("color_agenda")
+  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([usuarioId, clinicaId])
+  @@unique([clinicaId, id])
+  @@index([clinicaId])
+  @@index([usuarioId])
+  @@map("membresias")
+}
+
+model Auditoria {
+  id        String   @id @default(cuid())
+  clinicaId String   @map("clinica_id")
+  usuarioId String?  @map("usuario_id")
+  accion    String
+  entidad   String
+  entidadId String?  @map("entidad_id")
+  detalle   Json?
+  creadoEn  DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  clinica Clinica  @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId])
+  @@index([usuarioId])
+  @@map("auditoria")
+}
+
+model DienteRef {
+  fdi       Int        @id
+  denticion Denticion
+  tipo      TipoDiente
+  cuadrante Int
+  posicion  Int
+  nombre    String
+
+  superficies SuperficieDiente[]
+
+  @@map("dientes_ref")
+}
+
+model SuperficieDiente {
+  fdi        Int
+  superficie Superficie
+
+  diente DienteRef @relation(fields: [fdi], references: [fdi], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([fdi, superficie])
+  @@map("superficies_diente")
+}

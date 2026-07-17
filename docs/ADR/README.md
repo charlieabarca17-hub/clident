@@ -33,6 +33,7 @@ Los ADR existen porque las decisiones de este proyecto tienen razones que no se 
 | [ADR-012](ADR-012-modelo-de-privilegios.md) | Modelo de privilegios: default restrictivo y clases de tabla | Aceptado |
 | [ADR-013](ADR-013-exigibilidad-de-cargos.md) | Exigibilidad: nacer no es lo mismo que vencer | Aceptado |
 | [ADR-014](ADR-014-estados-plan.md) | Estados de `PlanTratamiento` y `PlanItem` | Aceptado |
+| [ADR-015](ADR-015-migrador-neon-y-bootstrap-incremental.md) | Migrador Neon sin bypass + bootstrap incremental | Aceptado |
 
 ## Formato
 

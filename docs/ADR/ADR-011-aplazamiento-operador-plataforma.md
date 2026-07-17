@@ -4,6 +4,7 @@
 - **Fecha:** 2026-07-17
 - **Ciclo:** 1
 - **Relacionado:** ADR-001 (multitenancy + RLS), ADR-003 (usuario + membresía + roles)
+- **Superseded parcialmente por:** ADR-015 — solo el momento en que se clona el catálogo
 
 ## Contexto
 
