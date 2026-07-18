@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { DuiInput } from "@/components/pacientes/dui-input";
 import { crearPacienteDesdeFormulario } from "@/server/actions/pacientes";
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso } from "@/server/auth/permissions";
@@ -36,7 +37,7 @@ export default async function NuevoPacientePage() {
                 <input name="fechaNacimiento" type="date" required className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
               </label>
               <label className="block text-sm font-medium">DUI
-                <input name="dui" inputMode="numeric" pattern="[0-9]{8}-[0-9]" maxLength={10} placeholder="00000000-0" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
+                <DuiInput />
               </label>
               <label className="block text-sm font-medium">Teléfono *
                 <input name="telefono" required maxLength={30} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" autoComplete="tel" />

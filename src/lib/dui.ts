@@ -33,13 +33,23 @@
  * datos personales de terceros y no se meten en un repositorio ni en una suite de
  * pruebas para verificar una fórmula (decidido por el propietario, Ciclo 2).
  *
- * Mientras tanto: la base hace cumplir el **formato** vía `CHECK (dui ~ '^\d{8}-\d$')`,
- * y Zod hace cumplir el mismo formato al capturar. Es menos de lo que se puede validar,
- * y es todo lo que hoy se puede afirmar con fundamento.
+ * Mientras tanto: la base hace cumplir el **formato** vía `CHECK (dui ~ '^\d{8}-\d$')`.
+ * Al capturar, Zod normaliza los nueve dígitos consecutivos a esa forma canónica y luego
+ * valida el mismo formato. Es menos de lo que se puede validar, y es todo lo que hoy se
+ * puede afirmar con fundamento.
  */
 
 /** Espejo exacto del `CHECK` de la base (ARQUITECTURA.md §14). Solo forma. */
 export const FORMATO_DUI = /^\d{8}-\d$/;
+
+/**
+ * Convierte los nueve dígitos escritos sin guion al formato que exige PostgreSQL.
+ * Las demás entradas se conservan para que la validación posterior las rechace con
+ * un mensaje claro, en lugar de intentar adivinar o corregir datos incompletos.
+ */
+export function normalizarDui(valor: string): string {
+  return /^\d{9}$/.test(valor) ? `${valor.slice(0, 8)}-${valor.slice(8)}` : valor;
+}
 
 /**
  * ¿Tiene la forma `########-#`?

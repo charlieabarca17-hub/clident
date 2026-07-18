@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FORMATO_DUI, esFormatoDui } from "@/lib/dui";
+import { FORMATO_DUI, esFormatoDui, normalizarDui } from "@/lib/dui";
 
 // El dígito verificador NO se valida: está pendiente de evidencia oficial del RNPN.
 // Ver la nota de src/lib/dui.ts. No hay pruebas de eso porque no hay eso.
@@ -41,5 +41,18 @@ describe("esFormatoDui", () => {
     expect(FORMATO_DUI.global).toBe(false); // con /g, .test() alterna por lastIndex
     expect(FORMATO_DUI.test("12345678-4")).toBe(true);
     expect(FORMATO_DUI.test("12345678-4")).toBe(true);
+  });
+});
+
+describe("normalizarDui", () => {
+  it("agrega el guion al recibir los nueve dígitos consecutivos", () => {
+    expect(normalizarDui("123456784")).toBe("12345678-4");
+    expect(normalizarDui("000000000")).toBe("00000000-0");
+  });
+
+  it("conserva la forma canónica y las entradas incompletas", () => {
+    expect(normalizarDui("12345678-4")).toBe("12345678-4");
+    expect(normalizarDui("12345678")).toBe("12345678");
+    expect(normalizarDui("1234567a4")).toBe("1234567a4");
   });
 });
