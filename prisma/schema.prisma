@@ -57,6 +57,13 @@ enum Superficie {
   OCLUSAL
 }
 
+// BOCA cubre tratamientos que no se anclan a una pieza (limpieza, consulta,
+// ortodoncia). DIENTE exige o admite piezas según las banderas del tratamiento.
+enum AlcanceTratamiento {
+  DIENTE
+  BOCA
+}
+
 model Clinica {
   id            String        @id @default(cuid())
   nombre        String
@@ -73,6 +80,8 @@ model Clinica {
   expedientes                     Expediente[]
   alertasMedicas                  AlertaMedica[]
   desactivacionesAlertasMedicas   DesactivacionAlertaMedica[]
+  categoriasTratamiento           CategoriaTratamiento[]
+  tratamientos                    Tratamiento[]
 
   @@map("clinicas")
 }
@@ -268,6 +277,83 @@ model Cita {
   @@index([clinicaId, pacienteId])
   @@index([clinicaId, odontologoId])
   @@map("citas")
+}
+
+// Plantillas de plataforma (REFERENCIA_GLOBAL): se COPIAN al catálogo de cada
+// clínica con clonarCatalogo(). La app solo las lee; las siembra el migrador.
+model PlantillaCategoria {
+  id     String @id
+  nombre String
+  orden  Int    @unique
+
+  plantillas PlantillaTratamiento[]
+
+  @@map("plantillas_categoria")
+}
+
+model PlantillaTratamiento {
+  codigo                      String             @id
+  categoriaId                 String             @map("categoria_id")
+  nombre                      String
+  precioSugeridoCentavos      Int                @map("precio_sugerido_centavos")
+  alcance                     AlcanceTratamiento
+  requiereDiente              Boolean            @map("requiere_diente")
+  permiteMultiplesDientes     Boolean            @map("permite_multiples_dientes")
+  permiteSuperficies          Boolean            @map("permite_superficies")
+  permiteMultiplesSuperficies Boolean            @map("permite_multiples_superficies")
+  requiereDiagnostico         Boolean            @map("requiere_diagnostico")
+  permiteMultiplesSesiones    Boolean            @map("permite_multiples_sesiones")
+
+  categoria PlantillaCategoria @relation(fields: [categoriaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("plantillas_tratamiento")
+}
+
+model CategoriaTratamiento {
+  id            String   @id @default(cuid())
+  clinicaId     String   @map("clinica_id")
+  nombre        String
+  orden         Int
+  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica      Clinica       @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tratamientos Tratamiento[]
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, nombre])
+  @@index([clinicaId])
+  @@map("categorias_tratamiento")
+}
+
+// El catálogo maestro de la clínica. Sin columna de superficie a propósito
+// (REGLAS-DE-NEGOCIO §4.7): las superficies existen solo al asignar el
+// tratamiento a un paciente. El precio de un plan NUNCA se lee de aquí (ADR-006).
+model Tratamiento {
+  id                          String             @id @default(cuid())
+  clinicaId                   String             @map("clinica_id")
+  categoriaId                 String             @map("categoria_id")
+  codigo                      String
+  nombre                      String
+  precioListaCentavos         Int                @map("precio_lista_centavos")
+  activo                      Boolean            @default(true)
+  alcance                     AlcanceTratamiento
+  requiereDiente              Boolean            @map("requiere_diente")
+  permiteMultiplesDientes     Boolean            @map("permite_multiples_dientes")
+  permiteSuperficies          Boolean            @map("permite_superficies")
+  permiteMultiplesSuperficies Boolean            @map("permite_multiples_superficies")
+  requiereDiagnostico         Boolean            @map("requiere_diagnostico")
+  permiteMultiplesSesiones    Boolean            @map("permite_multiples_sesiones")
+  creadoEn                    DateTime           @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn               DateTime           @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica   Clinica              @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  categoria CategoriaTratamiento @relation(fields: [clinicaId, categoriaId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, codigo])
+  @@index([clinicaId, categoriaId])
+  @@map("tratamientos")
 }
 
 model DienteRef {

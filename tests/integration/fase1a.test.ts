@@ -287,6 +287,7 @@ describe("estructura de seguridad", () => {
     const clasificadas = [
       "alertas_medicas",
       "auditoria",
+      "categorias_tratamiento",
       "citas",
       "clinicas",
       "desactivaciones_alertas_medicas",
@@ -294,8 +295,11 @@ describe("estructura de seguridad", () => {
       "expedientes",
       "membresias",
       "pacientes",
+      "plantillas_categoria",
+      "plantillas_tratamiento",
       "sucursales",
       "superficies_diente",
+      "tratamientos",
       "usuarios",
     ];
     const resultado = await migrator.query(
@@ -310,10 +314,10 @@ describe("estructura de seguridad", () => {
     const resultado = await migrator.query(
       `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-       WHERE n.nspname = 'public' AND c.relname IN ('alertas_medicas','clinicas','citas','desactivaciones_alertas_medicas','expedientes','sucursales','membresias','auditoria','pacientes')
+       WHERE n.nspname = 'public' AND c.relname IN ('alertas_medicas','clinicas','citas','desactivaciones_alertas_medicas','expedientes','sucursales','membresias','auditoria','pacientes','categorias_tratamiento','tratamientos')
        ORDER BY c.relname`,
     );
-    expect(resultado.rows).toHaveLength(9);
+    expect(resultado.rows).toHaveLength(11);
     expect(resultado.rows.every((fila) => fila.relrowsecurity && fila.relforcerowsecurity)).toBe(true);
   });
 
@@ -330,11 +334,11 @@ describe("estructura de seguridad", () => {
       `SELECT table_name, column_name, data_type, datetime_precision
        FROM information_schema.columns
        WHERE table_schema = 'public'
-         AND table_name IN ('alertas_medicas', 'clinicas', 'citas', 'desactivaciones_alertas_medicas', 'expedientes', 'sucursales', 'usuarios', 'membresias', 'auditoria', 'pacientes')
+         AND table_name IN ('alertas_medicas', 'clinicas', 'citas', 'desactivaciones_alertas_medicas', 'expedientes', 'sucursales', 'usuarios', 'membresias', 'auditoria', 'pacientes', 'categorias_tratamiento', 'tratamientos')
          AND data_type LIKE 'timestamp%'
        ORDER BY table_name, column_name`,
     );
-    expect(resultado.rows).toHaveLength(21);
+    expect(resultado.rows).toHaveLength(25);
     expect(resultado.rows.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(true);
     expect(resultado.rows.every(({ datetime_precision }) => datetime_precision === 3)).toBe(true);
   });
@@ -392,6 +396,10 @@ describe("estructura de seguridad", () => {
       auditoria: ["SELECT", "INSERT"],
       dientes_ref: ["SELECT"],
       superficies_diente: ["SELECT"],
+      plantillas_categoria: ["SELECT"],
+      plantillas_tratamiento: ["SELECT"],
+      categorias_tratamiento: ["SELECT", "INSERT", "UPDATE"],
+      tratamientos: ["SELECT", "INSERT", "UPDATE"],
     };
     const verbos = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"] as const;
     for (const [tabla, permitidos] of Object.entries(clases)) {
@@ -419,8 +427,8 @@ describe("estructura de seguridad", () => {
 
   it("clident_readonly tiene SELECT y ningún otro privilegio en toda tabla", async () => {
     const tablas = [
-      "alertas_medicas", "auditoria", "clinicas", "citas", "desactivaciones_alertas_medicas", "dientes_ref", "expedientes",
-      "membresias", "pacientes", "sucursales", "superficies_diente", "usuarios",
+      "alertas_medicas", "auditoria", "categorias_tratamiento", "clinicas", "citas", "desactivaciones_alertas_medicas", "dientes_ref", "expedientes",
+      "membresias", "pacientes", "plantillas_categoria", "plantillas_tratamiento", "sucursales", "superficies_diente", "tratamientos", "usuarios",
     ];
     const verbos = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"];
     for (const tabla of tablas) {
@@ -444,7 +452,7 @@ describe("estructura de seguridad", () => {
        GROUP BY tablename ORDER BY tablename`,
     );
     expect(resultado.rows.map(({ tablename }) => tablename)).toEqual([
-      "alertas_medicas", "auditoria", "citas", "clinicas", "desactivaciones_alertas_medicas", "expedientes", "membresias", "pacientes", "sucursales",
+      "alertas_medicas", "auditoria", "categorias_tratamiento", "citas", "clinicas", "desactivaciones_alertas_medicas", "expedientes", "membresias", "pacientes", "sucursales", "tratamientos",
     ]);
     for (const fila of resultado.rows) {
       expect(fila.tiene_migracion, `${fila.tablename}.migración`).toBe(true);

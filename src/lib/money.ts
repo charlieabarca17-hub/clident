@@ -39,6 +39,36 @@ export function formatearUSD(centavos: number): string {
 }
 
 /**
+ * Representación editable de un monto para el `value` de un campo de formulario:
+ * `4500` → `"45.00"`. Sin símbolo ni separador de miles, para que el mismo texto
+ * vuelva por `centavosDesdeTexto` sin transformación. También es "solo para mostrar".
+ */
+export function usdEditable(centavos: number): string {
+  exigirCentavos(centavos);
+  return (centavos / 100).toFixed(2);
+}
+
+/**
+ * Convierte lo que una persona escribe en un campo de precio ("12.50", "$12.50",
+ * "12") a centavos enteros, **sin pasar por un float**: se parsea el texto, no se
+ * multiplica un decimal. Devuelve `null` si la entrada no es un monto válido —
+ * la capa de validación convierte ese `null` en un mensaje claro.
+ *
+ * Vive acá porque toda conversión texto↔centavos es asunto de este archivo (ADR-009).
+ */
+export function centavosDesdeTexto(texto: string): number | null {
+  const limpio = texto.trim().replace(/^\$\s*/, "").replaceAll(",", "");
+  const forma = /^(\d+)(?:\.(\d{1,2}))?$/.exec(limpio);
+  if (!forma) return null;
+
+  const dolares = Number(forma[1]);
+  const fraccion = forma[2] ?? "";
+  const centavos = dolares * 100 + Number(fraccion.padEnd(2, "0"));
+  if (!Number.isSafeInteger(centavos) || centavos > MAX_CENTAVOS) return null;
+  return centavos;
+}
+
+/**
  * Aplica un porcentaje a un monto en centavos y devuelve centavos enteros.
  *
  * **Es el único lugar del proyecto donde se decide un redondeo de dinero.** Existe

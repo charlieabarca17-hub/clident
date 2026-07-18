@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_CENTAVOS, aplicarPorcentaje, formatearUSD } from "@/lib/money";
+import { MAX_CENTAVOS, aplicarPorcentaje, centavosDesdeTexto, formatearUSD, usdEditable } from "@/lib/money";
 
 describe("formatearUSD", () => {
   it("formatea centavos como USD salvadoreño", () => {
@@ -73,5 +73,51 @@ describe("aplicarPorcentaje", () => {
   it("rechaza un porcentaje que no es número finito", () => {
     expect(() => aplicarPorcentaje(100, Number.NaN)).toThrow(/finito/);
     expect(() => aplicarPorcentaje(100, Number.POSITIVE_INFINITY)).toThrow(/finito/);
+  });
+});
+
+describe("centavosDesdeTexto", () => {
+  it("convierte montos escritos como los escribe una persona", () => {
+    expect(centavosDesdeTexto("45")).toBe(4500);
+    expect(centavosDesdeTexto("45.5")).toBe(4550);
+    expect(centavosDesdeTexto("45.50")).toBe(4550);
+    expect(centavosDesdeTexto("$45.50")).toBe(4550);
+    expect(centavosDesdeTexto(" $ 1,234.56 ")).toBe(123456);
+    expect(centavosDesdeTexto("0.05")).toBe(5);
+    expect(centavosDesdeTexto("0")).toBe(0);
+  });
+
+  it("no pasa por float: el clásico 0.29 no pierde un centavo", () => {
+    // 0.29 * 100 === 28.999999999999996 en IEEE 754; parsear texto lo evita.
+    expect(centavosDesdeTexto("0.29")).toBe(29);
+    expect(centavosDesdeTexto("19.99")).toBe(1999);
+  });
+
+  it("rechaza lo que no es un monto", () => {
+    expect(centavosDesdeTexto("")).toBeNull();
+    expect(centavosDesdeTexto("abc")).toBeNull();
+    expect(centavosDesdeTexto("-5")).toBeNull();
+    expect(centavosDesdeTexto("12.345")).toBeNull();
+    expect(centavosDesdeTexto("12.")).toBeNull();
+    expect(centavosDesdeTexto("1e3")).toBeNull();
+  });
+
+  it("rechaza montos que no caben en un Int de PostgreSQL", () => {
+    expect(centavosDesdeTexto("21474836.47")).toBe(MAX_CENTAVOS);
+    expect(centavosDesdeTexto("21474836.48")).toBeNull();
+    expect(centavosDesdeTexto("99999999")).toBeNull();
+  });
+});
+
+describe("usdEditable", () => {
+  it("produce un texto que centavosDesdeTexto devuelve intacto", () => {
+    for (const centavos of [0, 5, 29, 4500, 4550, 123456, MAX_CENTAVOS]) {
+      expect(centavosDesdeTexto(usdEditable(centavos))).toBe(centavos);
+    }
+  });
+
+  it("no formatea con símbolos ni separadores", () => {
+    expect(usdEditable(4500)).toBe("45.00");
+    expect(usdEditable(123456)).toBe("1234.56");
   });
 });
