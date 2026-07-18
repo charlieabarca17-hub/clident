@@ -1,0 +1,88 @@
+# CI de CLIDENT
+#
+# Corre en cada push y en cada pull request. Es la barrera que garantiza que
+# ningún cambio llegue a main sin pasar por las tres validaciones obligatorias
+# del flujo de desarrollo (FLUJO-DE-DESARROLLO.md §5): lint, typecheck y tests.
+#
+# La suite de integración corre SOLO si el repositorio tiene configurados los
+# secretos TEST_DATABASE_URL y TEST_DATABASE_CONFIRM (rama "pruebas" de Neon,
+# ADR-010). Sin ellos, el job se salta de forma visible — no en silencio: el
+# job aparece como "skipped" en el PR.
+#
+# MIGRATION_DATABASE_URL no se usa aquí: las migraciones se despliegan en un
+# workflow aparte, nunca como efecto secundario del CI (CLAUDE.md §17).
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  validaciones:
+    name: Lint, typecheck y tests unitarios
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente Prisma
+        run: npm run prisma:generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests unitarios
+        run: npm test
+
+  integracion:
+    name: Tests de integración (Neon, rama pruebas)
+    runs-on: ubuntu-latest
+    # Los secretos no se pueden leer en `if` a nivel de job; se resuelven en un
+    # paso previo y el resto del job depende de ese resultado.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar si hay credenciales de pruebas
+        id: credenciales
+        env:
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+        run: |
+          if [ -n "$TEST_DATABASE_URL" ]; then
+            echo "disponibles=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "disponibles=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Sin TEST_DATABASE_URL: la suite de integración no corre. Configurá los secretos del repositorio para activarla."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.credenciales.outputs.disponibles == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        if: steps.credenciales.outputs.disponibles == 'true'
+        run: npm ci
+
+      - name: Generar cliente Prisma
+        if: steps.credenciales.outputs.disponibles == 'true'
+        run: npm run prisma:generate
+
+      - name: Tests de integración
+        if: steps.credenciales.outputs.disponibles == 'true'
+        env:
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          TEST_DATABASE_CONFIRM: ${{ secrets.TEST_DATABASE_CONFIRM }}
+        run: npm run test:integration
