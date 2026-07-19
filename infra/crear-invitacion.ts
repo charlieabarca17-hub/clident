@@ -24,7 +24,7 @@ try {
   if (resultado.rowCount !== 1) throw new Error("Usuario inexistente o contraseña ya establecida.");
   // El token solo se muestra una vez para entregarlo al administrador: no ejecutes este
   // script en CI ni en una terminal cuyo stdout se archive. La base guarda solo su hash.
-  console.log(`/establecer-contrasena?token=${token}`);
+  console.log(`/establecer-contrasena/${token}`);
 } finally {
   await cliente.end();
 }

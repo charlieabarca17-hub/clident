@@ -44,7 +44,10 @@ export async function establecerPassword(formData: FormData): Promise<void> {
     const tokenSeguro = typeof token === "string" && /^[A-Za-z0-9_-]{32,200}$/.test(token)
       ? token
       : "";
-    redirect(`/establecer-contrasena?token=${encodeURIComponent(tokenSeguro)}&error=password`);
+    const ruta = tokenSeguro
+      ? `/establecer-contrasena/${encodeURIComponent(tokenSeguro)}`
+      : "/establecer-contrasena";
+    redirect(`${ruta}?error=password`);
   }
   const usuario = await establecerPasswordConInvitacion(datos.data.token, datos.data.password);
   if (!usuario) redirect("/establecer-contrasena?error=token");

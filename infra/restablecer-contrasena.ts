@@ -27,7 +27,7 @@ try {
   if (resultado.rowCount !== 1) {
     throw new Error("Usuario inexistente o sin contraseña. Para una cuenta nueva usá invitar-admin.");
   }
-  console.log(`/establecer-contrasena?token=${token}`);
+  console.log(`/establecer-contrasena/${token}`);
 } finally {
   await cliente.end();
 }
