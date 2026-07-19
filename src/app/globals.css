@@ -8,33 +8,37 @@
    IDENTIDAD VISUAL DE CLIDENT
    ============================================================================
 
-   Paleta definida y aprobada por Carlos el 18-jul-2026. NO se cambian estos
+   Paleta definida y aprobada por Carlos el 19-jul-2026. NO se cambian estos
    valores sin su autorización: el contraste de cada par ya fue verificado
    contra WCAG AA y rehacerlo es perder trabajo aprobado.
 
    Se escriben en HEX, no en oklch, a propósito. El dueño de este sistema no
-   es programador: tiene que poder abrir este archivo, leer `#E88DA3` y
-   reconocer su propio rosa. `oklch(0.74 0.09 5.2)` no se puede verificar a
+   es programador: tiene que poder abrir este archivo, leer `#2F3E3C` y
+   reconocer su verde clínico. `oklch(...)` no se puede verificar a
    simple vista, y una paleta que nadie puede auditar termina derivando.
 
    La decisión menos obvia y más importante:
 
-     LOS BOTONES ROSA LLEVAN TEXTO CIRUELA, NO BLANCO.
+     LOS BOTONES VERDE PROFUNDO LLEVAN TEXTO CREMA.
 
-   Rosa #E88DA3 con blanco da 2.6:1 — reprueba WCAG AA (mínimo 4.5:1).
-   Rosa #E88DA3 con ciruela #4B2636 da 5.1:1 — aprueba.
-   Si algún día ves `text-white` sobre un fondo rosa, es una regresión.
+   Verde #2F3E3C con crema #FBF9F1 da 10.62:1. El mismo verde sobre
+   menta #BDDBD1 da 7.58:1 y sobre celeste #C7E7EC da 8.57:1.
    ========================================================================= */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 
-  /* Tokens con nombre de la paleta CLIDENT. Existen además de los semánticos
-     de shadcn porque hay lugares (el odontograma, la barra lateral) donde lo
-     que se quiere decir es "el rosa de la marca", no "el color primario". */
+  /* Tokens con nombre de la paleta CLIDENT. Los nombres rosa/ciruela se
+     conservan temporalmente como alias de compatibilidad para no acoplar un
+     cambio visual con una reescritura mecánica de todas las pantallas. */
   --color-fondo: var(--fondo);
   --color-superficie: var(--superficie);
+  --color-pino: var(--pino);
+  --color-menta: var(--menta);
+  --color-crema: var(--crema);
+  --color-niebla: var(--niebla);
+  --color-cielo: var(--cielo);
   --color-rosa: var(--rosa);
   --color-rosa-suave: var(--rosa-suave);
   --color-rosa-hover: var(--rosa-hover);
@@ -108,30 +112,37 @@
      pintura y no un tema de verdad. */
   color-scheme: light;
 
-  /* Paleta cruda aprobada. */
-  --fondo: #fffdfc;
+  /* Paleta cruda aprobada. Blanco se reserva para tarjetas y dientes. */
+  --pino: #2f3e3c;
+  --menta: #bddbd1;
+  --gris-clinico: #e7e9e3;
+  --crema: #fbf9f1;
+  --niebla: #e8f0f1;
+  --cielo: #c7e7ec;
+
+  --fondo: var(--crema);
   --superficie: #ffffff;
-  --rosa: #e88da3;
-  --rosa-suave: #fbe8ed;
-  --rosa-hover: #cf6f89;
-  --ciruela: #4b2636;
-  --texto: #2d2830;
-  --texto-2: #766b71;
-  --borde: #ede5e8;
-  --exito: #48a987;
-  --advertencia: #e5a44b;
+  --rosa: var(--pino);
+  --rosa-suave: var(--menta);
+  --rosa-hover: #243230;
+  --ciruela: var(--pino);
+  --texto: var(--pino);
+  --texto-2: #586866;
+  --borde: var(--gris-clinico);
+  --exito: #4f8e7b;
+  --advertencia: #c58a37;
 
   /* Variantes suaves para fondos de estado. No estaban en la paleta original
      porque la maqueta no tenía avisos; se derivan del tono aprobado y sólo se
      usan como fondo, nunca como texto. */
-  --exito-suave: #eaf6f1;
-  --advertencia-suave: #fdf3e4;
+  --exito-suave: #e5f1ed;
+  --advertencia-suave: #f8eddc;
 
   /* El verde aprobado #48A987 es correcto como RELLENO (puntos, bordes, barras)
      pero como TEXTO da 2.60:1 sobre su propio fondo suave y reprueba WCAG AA.
      Este es el mismo verde, oscurecido hasta 5.10:1. Regla: `bg-exito` pinta,
      `text-exito-texto` se lee. Nunca `text-exito` sobre fondo claro. */
-  --exito-texto: #2f7358;
+  --exito-texto: #2f6d5b;
 
   /* Semánticos de shadcn, mapeados a la paleta. Esto es lo que hace que las
      27 pantallas cambien de aspecto sin tocarlas una por una: usan
@@ -143,53 +154,49 @@
   --popover: var(--superficie);
   --popover-foreground: var(--texto);
 
-  /* El par de la decisión #1: fondo rosa, texto ciruela. */
-  --primary: var(--rosa);
-  --primary-foreground: var(--ciruela);
+  --primary: var(--pino);
+  --primary-foreground: var(--crema);
 
-  --secondary: var(--rosa-suave);
-  --secondary-foreground: var(--ciruela);
-  --muted: var(--rosa-suave);
+  --secondary: var(--menta);
+  --secondary-foreground: var(--pino);
+  --muted: var(--niebla);
   --muted-foreground: var(--texto-2);
-  --accent: var(--rosa-suave);
-  --accent-foreground: var(--ciruela);
+  --accent: var(--cielo);
+  --accent-foreground: var(--pino);
 
-  /* Rojo de la familia de la paleta (mismo tono cálido), no el rojo puro de
-     shadcn, que al lado del rosa se ve de otro sistema. */
-  --destructive: #c14356;
+  --destructive: #b34c5d;
 
   --border: var(--borde);
   --input: var(--borde);
-  --ring: var(--rosa);
+  --ring: var(--pino);
 
-  --chart-1: var(--rosa);
-  --chart-2: var(--ciruela);
+  --chart-1: var(--pino);
+  --chart-2: var(--cielo);
   --chart-3: var(--exito);
   --chart-4: var(--advertencia);
-  --chart-5: var(--rosa-hover);
+  --chart-5: var(--menta);
 
   --radius: 0.875rem; /* 14px */
 
-  /* Barra lateral ciruela: es el ancla de identidad de toda la aplicación. */
-  --sidebar: var(--ciruela);
-  --sidebar-foreground: #f4e8ec;
-  --sidebar-primary: var(--rosa);
-  --sidebar-primary-foreground: var(--ciruela);
-  --sidebar-accent: #5e3345;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #63394a;
-  --sidebar-ring: var(--rosa);
+  /* Verde profundo como ancla; el celeste identifica la sección activa. */
+  --sidebar: var(--pino);
+  --sidebar-foreground: var(--crema);
+  --sidebar-primary: var(--cielo);
+  --sidebar-primary-foreground: var(--pino);
+  --sidebar-accent: var(--cielo);
+  --sidebar-accent-foreground: var(--pino);
+  --sidebar-border: #526764;
+  --sidebar-ring: var(--cielo);
 }
 
 /* --------------------------------------------------------------------------
    TEMA OSCURO
 
-   No es una inversión automática: el ciruela deja de ser el acento y pasa a
-   ser el suelo, y el rosa mantiene el protagonismo. Por eso los fondos son
-   ciruelas muy oscuros y no grises.
+   No es una inversión automática: conserva el verde clínico como suelo y usa
+   la menta como acción principal para mantener contraste y jerarquía.
 
    Sólo se redefine lo que DE VERDAD cambia. Todo lo demás
-   (`--background: var(--fondo)`, `--primary: var(--rosa)`…) ya está declarado
+   (`--background: var(--fondo)`, `--primary: var(--pino)`…) ya está declarado
    en términos de la paleta allá arriba, así que sigue solo al mover la paleta.
 
    ⚠ Estos valores están escritos DOS VECES: acá y en el bloque
@@ -204,39 +211,42 @@
   /* --- INICIO TEMA OSCURO --- */
   color-scheme: dark;
 
-  --fondo: #1c1218;
-  --superficie: #271821;
-  --rosa: #e88da3;
-  --rosa-suave: #3a2430;
-  --rosa-hover: #f0a5b8;
-  --ciruela: #4b2636;
-  --texto: #f6ecef;
-  --texto-2: #bfa9b3;
-  --borde: #3d2833;
-  --exito: #63c3a1;
-  --advertencia: #edb96f;
-  --exito-suave: #1e3830;
-  --advertencia-suave: #3a2e1c;
+  --fondo: #17211f;
+  --superficie: #202d2a;
+  --pino: #bddbd1;
+  --menta: #2b403c;
+  --gris-clinico: #3a504c;
+  --crema: #fbf9f1;
+  --niebla: #263936;
+  --cielo: #c7e7ec;
+  --rosa: var(--pino);
+  --rosa-suave: var(--menta);
+  --rosa-hover: var(--cielo);
+  --ciruela: #2f3e3c;
+  --texto: var(--crema);
+  --texto-2: #bddbd1;
+  --borde: var(--gris-clinico);
+  --exito: #74b9a4;
+  --advertencia: #ddb36f;
+  --exito-suave: #1d3731;
+  --advertencia-suave: #3b311f;
   /* En oscuro el problema se invierte: el texto verde debe ACLARARSE para
      despegarse del fondo, no oscurecerse. */
-  --exito-texto: #7fd4b2;
+  --exito-texto: #8ad1bb;
 
-  /* Sobre rosa suave oscuro el ciruela no se lee: el texto pasa a ser claro.
-     El par rosa+ciruela de los botones NO cambia — esa decisión no depende
-     del tema. */
+  --primary-foreground: #2f3e3c;
   --secondary-foreground: var(--texto);
   --accent-foreground: var(--texto);
 
-  --destructive: #e97185;
-  --input: #4a303d;
-  --chart-2: #c98aa4;
+  --destructive: #e07b8a;
+  --input: #3a504c;
+  --chart-2: var(--cielo);
 
-  /* La barra lateral se hunde por debajo del fondo: en oscuro el ciruela ya
-     es el suelo, así que el ancla de identidad tiene que ser aún más profunda
-     para seguir separándose. */
-  --sidebar: #150d12;
-  --sidebar-accent: #33202b;
-  --sidebar-border: #3d2833;
+  --sidebar: #101917;
+  --sidebar-foreground: var(--crema);
+  --sidebar-accent: var(--cielo);
+  --sidebar-accent-foreground: #2f3e3c;
+  --sidebar-border: #304641;
   /* --- FIN TEMA OSCURO --- */
 }
 
@@ -249,39 +259,42 @@
     /* --- INICIO TEMA OSCURO --- */
     color-scheme: dark;
 
-    --fondo: #1c1218;
-    --superficie: #271821;
-    --rosa: #e88da3;
-    --rosa-suave: #3a2430;
-    --rosa-hover: #f0a5b8;
-    --ciruela: #4b2636;
-    --texto: #f6ecef;
-    --texto-2: #bfa9b3;
-    --borde: #3d2833;
-    --exito: #63c3a1;
-    --advertencia: #edb96f;
-    --exito-suave: #1e3830;
-    --advertencia-suave: #3a2e1c;
+    --fondo: #17211f;
+    --superficie: #202d2a;
+    --pino: #bddbd1;
+    --menta: #2b403c;
+    --gris-clinico: #3a504c;
+    --crema: #fbf9f1;
+    --niebla: #263936;
+    --cielo: #c7e7ec;
+    --rosa: var(--pino);
+    --rosa-suave: var(--menta);
+    --rosa-hover: var(--cielo);
+    --ciruela: #2f3e3c;
+    --texto: var(--crema);
+    --texto-2: #bddbd1;
+    --borde: var(--gris-clinico);
+    --exito: #74b9a4;
+    --advertencia: #ddb36f;
+    --exito-suave: #1d3731;
+    --advertencia-suave: #3b311f;
     /* En oscuro el problema se invierte: el texto verde debe ACLARARSE para
        despegarse del fondo, no oscurecerse. */
-    --exito-texto: #7fd4b2;
+    --exito-texto: #8ad1bb;
 
-    /* Sobre rosa suave oscuro el ciruela no se lee: el texto pasa a ser claro.
-       El par rosa+ciruela de los botones NO cambia — esa decisión no depende
-       del tema. */
+    --primary-foreground: #2f3e3c;
     --secondary-foreground: var(--texto);
     --accent-foreground: var(--texto);
 
-    --destructive: #e97185;
-    --input: #4a303d;
-    --chart-2: #c98aa4;
+    --destructive: #e07b8a;
+    --input: #3a504c;
+    --chart-2: var(--cielo);
 
-    /* La barra lateral se hunde por debajo del fondo: en oscuro el ciruela ya
-       es el suelo, así que el ancla de identidad tiene que ser aún más profunda
-       para seguir separándose. */
-    --sidebar: #150d12;
-    --sidebar-accent: #33202b;
-    --sidebar-border: #3d2833;
+    --sidebar: #101917;
+    --sidebar-foreground: var(--crema);
+    --sidebar-accent: var(--cielo);
+    --sidebar-accent-foreground: #2f3e3c;
+    --sidebar-border: #304641;
     /* --- FIN TEMA OSCURO --- */
   }
 }
@@ -289,6 +302,20 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  input,
+  select,
+  textarea {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--foreground);
+    caret-color: var(--foreground);
+    box-shadow: 0 0 0 1000px var(--background) inset;
+    transition: background-color 9999s ease-out;
   }
   body {
     @apply bg-background text-foreground;

@@ -70,9 +70,9 @@ describe("tema oscuro", () => {
     expect(CSS).toContain("color-scheme: light");
   });
 
-  it("no reintroduce texto blanco sobre el rosa de los botones", () => {
-    // La decisión de contraste aprobada no depende del tema: rosa + ciruela
-    // da 5.38:1, rosa + blanco da 2.39:1 y reprueba WCAG AA.
+  it("mantiene un primer plano explícito para los botones en tema oscuro", () => {
+    // En oscuro el botón usa menta clara y texto verde profundo. El par conserva
+    // más de 7:1 de contraste y no debe degradar a blanco por accidente.
     for (const bloque of bloquesOscuros()) {
       expect(bloque).not.toMatch(/--primary-foreground:\s*(#fff|#ffffff|white)/i);
     }
