@@ -4,22 +4,35 @@ Sistema multi-clínica para la gestión operativa y clínica de consultorios odo
 
 ## Estado del proyecto
 
-Las fases de Fundación y Auth + Tenant + Roles + RLS están implementadas en `main`.
-El sistema cuenta con:
+**Las doce fases del roadmap inicial están implementadas.** El sistema cubre el ciclo completo
+de una clínica: agendar, atender, diagnosticar, planificar, ejecutar, cobrar y controlar.
 
-- Aplicación Next.js con TypeScript, Tailwind CSS y componentes preparados para shadcn/ui.
-- Prisma 7 con migraciones versionadas y cliente generado fuera del control de versiones.
-- Neon Postgres con ramas separadas para desarrollo, pruebas y producción.
-- Aislamiento multi-clínica mediante RLS forzado, políticas PostgreSQL y claves foráneas compuestas.
-- Autenticación con Auth.js Credentials, sesiones JWT y contraseñas Argon2id.
-- Invitaciones de un solo uso con token aleatorio, hash SHA-256 y caducidad de 24 horas.
-- Roles `ADMINISTRADOR`, `ODONTOLOGO`, `RECEPCION` y `CAJA`.
-- Contextos `requireAuth()` y `requireCtx()` con revalidación de membresía por solicitud.
-- Auditoría append-only y privilegios de base de datos separados por clase de tabla.
-- Catálogo global inicial de dientes y superficies.
+**Fundación y seguridad**
 
-La agenda, los pacientes, el expediente clínico, el odontograma, los planes, los procedimientos,
-la caja, el inventario y el dashboard forman parte del roadmap de la primera versión funcional.
+- Aislamiento multi-clínica en cuatro capas: contexto de sesión, filtro de repositorio,
+  RLS forzado y claves foráneas compuestas.
+- Autenticación Auth.js Credentials con Argon2id, sesiones JWT de 12 h y revalidación de
+  membresía contra PostgreSQL en cada solicitud.
+- Rate limit de login, invitaciones de un solo uso y 18 permisos granulares sobre 4 roles.
+- Auditoría append-only y privilegios de base de datos por clase de tabla.
+
+**Módulos funcionales**
+
+| Módulo | Qué garantiza |
+|---|---|
+| Agenda | Dos `EXCLUDE` de PostgreSQL impiden el doble booking de odontólogo y de paciente. |
+| Pacientes y expediente | DUI enmascarado por columna generada; alertas médicas append-only. |
+| Catálogo | Plantillas de plataforma clonables; sin duplicación por superficie. |
+| Diagnósticos | Separados del tratamiento; multi-diente y multi-superficie; anulables con motivo. |
+| Odontograma | Eventos append-only con proyección derivada y `rebuild` verificado por equivalencia. |
+| Planes | Precio congelado al crear e inmutable por privilegio de columna. |
+| Procedimientos | Hecho clínico inmutable; nota editable 12 h y enmiendas que preservan el original. |
+| Caja | La cuenta por cobrar nace solo aquí; dos contadores contra sobreaplicación; cinco saldos. |
+| Inventario | Stock que no puede quedar negativo; movimientos append-only. |
+| Tablero e historial | KPIs del día y el recorrido completo del paciente en una línea de tiempo. |
+
+**Pendiente de entorno:** las migraciones deben aplicarse en Neon con `clident_migrator` y el
+CI debe correr por primera vez. Ver [OPERACION.md](docs/OPERACION.md).
 
 ## Arquitectura
 
@@ -40,6 +53,8 @@ documentación canónica:
 - [Arquitectura](docs/ARQUITECTURA.md)
 - [Reglas de negocio](docs/REGLAS-DE-NEGOCIO.md)
 - [Flujo de desarrollo](docs/FLUJO-DE-DESARROLLO.md)
+- [Operación y despliegue](docs/OPERACION.md)
+- [Revisión de seguridad](docs/SEGURIDAD.md)
 - [ADRs](docs/ADR/)
 
 ## Seguridad multi-clínica
@@ -118,10 +133,18 @@ El bootstrap manual crea una clínica en estado `PRUEBA`, una `Sede principal`, 
 administrador, su membresía y el registro de auditoría. Se ejecuta exclusivamente con
 `MIGRATION_DATABASE_URL` y `clident_migrator`.
 
-La semilla de dientes es global e idempotente:
+Las semillas globales son idempotentes y se ejecutan con `MIGRATION_DATABASE_URL`:
 
 ```powershell
-npm run seed:dientes
+npm run seed:dientes     # 52 dientes y 312 superficies
+npm run seed:catalogo    # 12 categorías y 94 tratamientos de plantilla
+```
+
+Mantenimiento disponible como comando:
+
+```powershell
+npm run reconciliar          # los contadores de dinero y stock deben dar cero filas
+npm run odontograma:rebuild  # regenera la proyección del odontograma desde sus eventos
 ```
 
 La invitación del primer administrador se genera con `MIGRATION_DATABASE_URL` y devuelve una
@@ -145,25 +168,21 @@ tests/integration/       Pruebas reales contra Neon
 docs/                    Arquitectura, reglas, flujo y ADRs
 ```
 
-## Roadmap de la primera versión
+## Roadmap
 
-El orden de dependencias es deliberado:
-
-1. Paciente base: identidad, DUI enmascarado, responsables y búsqueda.
-2. Agenda: citas, concurrencia, restricciones de solapamiento y calendario.
-3. Expediente: alertas, pestañas y datos clínicos iniciales.
-4. Catálogo y tratamientos.
-5. Diagnósticos.
-6. Odontograma basado en eventos y proyección reconstruible.
-7. Planes de tratamiento.
-8. Procedimientos.
-9. Caja, cargos, pagos, cuotas y saldos exigibles.
-10. Inventario.
-11. Dashboard e historial unificado.
-12. Endurecimiento, backups, rate limiting, CI y responsividad.
-
-El roadmap detallado y sus criterios de salida se mantienen en
+Las doce fases del roadmap inicial están completas. Sus criterios de salida se mantienen en
 [FLUJO-DE-DESARROLLO.md](docs/FLUJO-DE-DESARROLLO.md).
+
+Lo siguiente no pertenece a ninguna fase implementada y **exige decisión del propietario**
+antes de construirse:
+
+- Corte de caja (apertura, cierre y arqueo del día).
+- Devolución de dinero en efectivo: el crédito a favor se reconoce, pero no existe entidad
+  de dinero que sale.
+- Política de mora: la mecánica está; el umbral de días es una decisión de negocio.
+- Radiografías y archivos: sería el primer dato de paciente fuera de PostgreSQL y requiere
+  su propio ADR de aislamiento.
+- DTE real.
 
 ## Fuera de alcance del MVP
 

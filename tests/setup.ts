@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import pg from "pg";
 
 import { sembrarDientes } from "../prisma/seed/dientes.ts";
+import { sembrarCatalogoGlobal } from "../prisma/seed/tratamientos.ts";
 
 export default async function setup(): Promise<void> {
   const migrationUrl = process.env.TEST_MIGRATION_DATABASE_URL;
@@ -27,10 +28,11 @@ export default async function setup(): Promise<void> {
   await migrator.connect();
   try {
     await migrator.query(
-      "TRUNCATE TABLE citas, desactivaciones_alertas_medicas, alertas_medicas, expedientes, pacientes, auditoria, membresias, sucursales, usuarios, clinicas RESTART IDENTITY CASCADE",
+      "TRUNCATE TABLE citas, movimientos_inventario, materiales, aplicaciones_pago, lineas_cargo, enmiendas_procedimiento, procedimiento_dientes, estados_superficie, eventos_odontograma, procedimientos, cargos, pagos, documentos_fiscales, plan_item_dientes, plan_items, planes, diagnostico_dientes, diagnosticos, desactivaciones_alertas_medicas, alertas_medicas, expedientes, pacientes, tratamientos, categorias_tratamiento, auditoria, membresias, sucursales, usuarios, clinicas RESTART IDENTITY CASCADE",
     );
   } finally {
     await migrator.end();
   }
   await sembrarDientes(migrationUrl);
+  await sembrarCatalogoGlobal(migrationUrl);
 }

@@ -122,21 +122,30 @@ afterAll(async () => {
 
 describe("bootstrap y referencias globales", () => {
   it("crea clínica, sede, administrador, membresía y auditoría", async () => {
+    // Cuenta SOLO las clínicas que creó este archivo. Los demás archivos de la
+    // suite crean las suyas contra la misma base, así que un conteo global
+    // dependería del orden de ejecución y fallaría por razones ajenas al bootstrap.
+    const mias = [clinicaA.clinicaId, clinicaB.clinicaId];
     const resultado = await migrator.query(
       `SELECT
-        (SELECT count(*)::int FROM clinicas) AS clinicas,
-        (SELECT count(*)::int FROM sucursales) AS sucursales,
-        (SELECT count(*)::int FROM usuarios) AS usuarios,
-        (SELECT count(*)::int FROM membresias) AS membresias,
-        (SELECT count(*)::int FROM auditoria) AS auditorias`,
+        (SELECT count(*)::int FROM clinicas    WHERE id         = ANY($1)) AS clinicas,
+        (SELECT count(*)::int FROM sucursales  WHERE clinica_id = ANY($1)) AS sucursales,
+        (SELECT count(*)::int FROM membresias  WHERE clinica_id = ANY($1)) AS membresias,
+        (SELECT count(*)::int FROM auditoria   WHERE clinica_id = ANY($1)) AS auditorias`,
+      [mias],
     );
     expect(resultado.rows[0]).toEqual({
       clinicas: 2,
       sucursales: 2,
-      usuarios: 2,
+      // Dos del bootstrap (una por clínica, mismo usuario administrador) más
+      // la de recepción que este archivo agrega a la clínica A para probar
+      // que un usuario de una sola clínica no enumera las ajenas.
       membresias: 3,
       auditorias: 2,
     });
+
+    // El usuario se comparte entre clínicas: es identidad global (ADR-003).
+    expect(clinicaB.usuarioId).toBe(clinicaA.usuarioId);
   });
 
   it("proyecta exactamente los 52 dientes y sus superficies", async () => {
@@ -286,16 +295,37 @@ describe("estructura de seguridad", () => {
   it("toda tabla pública está clasificada", async () => {
     const clasificadas = [
       "alertas_medicas",
+      "aplicaciones_pago",
       "auditoria",
+      "cargos",
+      "categorias_tratamiento",
       "citas",
       "clinicas",
       "desactivaciones_alertas_medicas",
+      "diagnostico_dientes",
+      "diagnosticos",
       "dientes_ref",
+      "documentos_fiscales",
+      "enmiendas_procedimiento",
+      "estados_superficie",
+      "eventos_odontograma",
       "expedientes",
+      "lineas_cargo",
+      "materiales",
       "membresias",
+      "movimientos_inventario",
       "pacientes",
+      "pagos",
+      "plan_item_dientes",
+      "plan_items",
+      "planes",
+      "plantillas_categoria",
+      "plantillas_tratamiento",
+      "procedimiento_dientes",
+      "procedimientos",
       "sucursales",
       "superficies_diente",
+      "tratamientos",
       "usuarios",
     ];
     const resultado = await migrator.query(
@@ -310,10 +340,10 @@ describe("estructura de seguridad", () => {
     const resultado = await migrator.query(
       `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-       WHERE n.nspname = 'public' AND c.relname IN ('alertas_medicas','clinicas','citas','desactivaciones_alertas_medicas','expedientes','sucursales','membresias','auditoria','pacientes')
+       WHERE n.nspname = 'public' AND c.relname IN ('alertas_medicas','clinicas','citas','desactivaciones_alertas_medicas','expedientes','sucursales','membresias','auditoria','pacientes','categorias_tratamiento','tratamientos','diagnosticos','diagnostico_dientes','eventos_odontograma','estados_superficie','planes','plan_items','plan_item_dientes','procedimientos','procedimiento_dientes','enmiendas_procedimiento','cargos','lineas_cargo','pagos','aplicaciones_pago','documentos_fiscales','materiales','movimientos_inventario')
        ORDER BY c.relname`,
     );
-    expect(resultado.rows).toHaveLength(9);
+    expect(resultado.rows).toHaveLength(28);
     expect(resultado.rows.every((fila) => fila.relrowsecurity && fila.relforcerowsecurity)).toBe(true);
   });
 
@@ -330,11 +360,11 @@ describe("estructura de seguridad", () => {
       `SELECT table_name, column_name, data_type, datetime_precision
        FROM information_schema.columns
        WHERE table_schema = 'public'
-         AND table_name IN ('alertas_medicas', 'clinicas', 'citas', 'desactivaciones_alertas_medicas', 'expedientes', 'sucursales', 'usuarios', 'membresias', 'auditoria', 'pacientes')
+         AND table_name IN ('alertas_medicas', 'clinicas', 'citas', 'desactivaciones_alertas_medicas', 'expedientes', 'sucursales', 'usuarios', 'membresias', 'auditoria', 'pacientes', 'categorias_tratamiento', 'tratamientos', 'diagnosticos', 'eventos_odontograma', 'estados_superficie', 'planes', 'plan_items', 'procedimientos', 'enmiendas_procedimiento', 'cargos', 'lineas_cargo', 'pagos', 'aplicaciones_pago', 'documentos_fiscales', 'materiales', 'movimientos_inventario')
          AND data_type LIKE 'timestamp%'
        ORDER BY table_name, column_name`,
     );
-    expect(resultado.rows).toHaveLength(21);
+    expect(resultado.rows).toHaveLength(58);
     expect(resultado.rows.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(true);
     expect(resultado.rows.every(({ datetime_precision }) => datetime_precision === 3)).toBe(true);
   });
@@ -392,6 +422,29 @@ describe("estructura de seguridad", () => {
       auditoria: ["SELECT", "INSERT"],
       dientes_ref: ["SELECT"],
       superficies_diente: ["SELECT"],
+      plantillas_categoria: ["SELECT"],
+      plantillas_tratamiento: ["SELECT"],
+      categorias_tratamiento: ["SELECT", "INSERT", "UPDATE"],
+      tratamientos: ["SELECT", "INSERT", "UPDATE"],
+      diagnosticos: ["SELECT", "INSERT", "UPDATE"],
+      diagnostico_dientes: ["SELECT", "INSERT", "DELETE"],
+      eventos_odontograma: ["SELECT", "INSERT"],
+      estados_superficie: ["SELECT", "INSERT", "UPDATE", "DELETE"],
+      planes: ["SELECT", "INSERT", "UPDATE"],
+      // PARCIALMENTE_INMUTABLE: sin UPDATE de tabla; las columnas mutables se
+      // verifican aparte con has_column_privilege.
+      plan_items: ["SELECT", "INSERT"],
+      plan_item_dientes: ["SELECT", "INSERT", "DELETE"],
+      procedimientos: ["SELECT", "INSERT"],
+      procedimiento_dientes: ["SELECT", "INSERT"],
+      enmiendas_procedimiento: ["SELECT", "INSERT"],
+      cargos: ["SELECT", "INSERT"],
+      pagos: ["SELECT", "INSERT"],
+      lineas_cargo: ["SELECT", "INSERT"],
+      aplicaciones_pago: ["SELECT", "INSERT"],
+      documentos_fiscales: ["SELECT", "INSERT"],
+      materiales: ["SELECT", "INSERT", "UPDATE"],
+      movimientos_inventario: ["SELECT", "INSERT"],
     };
     const verbos = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"] as const;
     for (const [tabla, permitidos] of Object.entries(clases)) {
@@ -405,8 +458,73 @@ describe("estructura de seguridad", () => {
     }
   });
 
+  it("plan_items solo permite UPDATE en estado y actualizado_en", async () => {
+    const resultado = await migrator.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'plan_items'
+         AND has_column_privilege('clident_app', 'public.plan_items', column_name, 'UPDATE')
+       ORDER BY column_name`,
+    );
+    expect(resultado.rows.map(({ column_name }) => column_name)).toEqual([
+      "actualizado_en",
+      "estado",
+    ]);
+  });
+
+  it("procedimientos solo permite UPDATE en la lista canónica de §10.5", async () => {
+    const resultado = await migrator.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'procedimientos'
+         AND has_column_privilege('clident_app', 'public.procedimientos', column_name, 'UPDATE')
+       ORDER BY column_name`,
+    );
+    expect(resultado.rows.map(({ column_name }) => column_name)).toEqual([
+      "actualizado_en",
+      "anulado_en",
+      "anulado_por_id",
+      // ADR-016 (#15): el puntero de cobro es mutable — cobrar lo reclama,
+      // anular el cargo lo libera.
+      "cargo_id",
+      "estado",
+      "motivo_anulacion",
+      "notas_clinicas",
+    ]);
+  });
+
+  it("cargos y pagos solo permiten UPDATE en sus columnas mutables (§12.5)", async () => {
+    const cargos = await migrator.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'cargos'
+         AND has_column_privilege('clident_app', 'public.cargos', column_name, 'UPDATE')
+       ORDER BY column_name`,
+    );
+    expect(cargos.rows.map(({ column_name }) => column_name)).toEqual([
+      "actualizado_en",
+      "anulado_en",
+      "anulado_por_id",
+      "documento_fiscal_id",
+      "estado",
+      "monto_aplicado_centavos",
+      "motivo_anulacion",
+    ]);
+
+    const pagos = await migrator.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'pagos'
+         AND has_column_privilege('clident_app', 'public.pagos', column_name, 'UPDATE')
+       ORDER BY column_name`,
+    );
+    expect(pagos.rows.map(({ column_name }) => column_name)).toEqual([
+      "actualizado_en",
+      "anulado_en",
+      "anulado_por_id",
+      "monto_aplicado_centavos",
+      "motivo_anulacion",
+    ]);
+  });
+
   it("append-only no concede UPDATE ni siquiera por columna", async () => {
-    for (const tabla of ["alertas_medicas", "auditoria", "desactivaciones_alertas_medicas"]) {
+    for (const tabla of ["alertas_medicas", "auditoria", "desactivaciones_alertas_medicas", "eventos_odontograma", "procedimiento_dientes", "enmiendas_procedimiento", "lineas_cargo", "aplicaciones_pago", "documentos_fiscales", "movimientos_inventario"]) {
       const resultado = await migrator.query(
         `SELECT column_name FROM information_schema.columns
          WHERE table_schema = 'public' AND table_name = $1
@@ -419,8 +537,8 @@ describe("estructura de seguridad", () => {
 
   it("clident_readonly tiene SELECT y ningún otro privilegio en toda tabla", async () => {
     const tablas = [
-      "alertas_medicas", "auditoria", "clinicas", "citas", "desactivaciones_alertas_medicas", "dientes_ref", "expedientes",
-      "membresias", "pacientes", "sucursales", "superficies_diente", "usuarios",
+      "alertas_medicas", "aplicaciones_pago", "auditoria", "cargos", "categorias_tratamiento", "clinicas", "citas", "desactivaciones_alertas_medicas", "diagnostico_dientes", "diagnosticos", "dientes_ref", "documentos_fiscales", "estados_superficie", "eventos_odontograma", "expedientes",
+      "lineas_cargo", "materiales", "membresias", "movimientos_inventario", "pacientes", "pagos", "plan_item_dientes", "plan_items", "planes", "plantillas_categoria", "plantillas_tratamiento", "procedimiento_dientes", "procedimientos", "enmiendas_procedimiento", "sucursales", "superficies_diente", "tratamientos", "usuarios",
     ];
     const verbos = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"];
     for (const tabla of tablas) {
@@ -444,7 +562,7 @@ describe("estructura de seguridad", () => {
        GROUP BY tablename ORDER BY tablename`,
     );
     expect(resultado.rows.map(({ tablename }) => tablename)).toEqual([
-      "alertas_medicas", "auditoria", "citas", "clinicas", "desactivaciones_alertas_medicas", "expedientes", "membresias", "pacientes", "sucursales",
+      "alertas_medicas", "aplicaciones_pago", "auditoria", "cargos", "categorias_tratamiento", "citas", "clinicas", "desactivaciones_alertas_medicas", "diagnostico_dientes", "diagnosticos", "documentos_fiscales", "enmiendas_procedimiento", "estados_superficie", "eventos_odontograma", "expedientes", "lineas_cargo", "materiales", "membresias", "movimientos_inventario", "pacientes", "pagos", "plan_item_dientes", "plan_items", "planes", "procedimiento_dientes", "procedimientos", "sucursales", "tratamientos",
     ]);
     for (const fila of resultado.rows) {
       expect(fila.tiene_migracion, `${fila.tablename}.migración`).toBe(true);

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { FORMATO_DUI } from "@/lib/dui";
+import { esFormatoDui, normalizarDui } from "@/lib/dui";
 
 const ZONA_HORARIA_CLINICA = "America/El_Salvador";
 
@@ -49,8 +49,12 @@ export const CrearPacienteSchema = z.object({
   fechaNacimiento: z.coerce.date().refine((fecha) => fecha <= hoyEnElSalvador(), {
     message: "La fecha de nacimiento no puede estar en el futuro.",
   }),
-  dui: z.string().trim().regex(FORMATO_DUI, "El DUI debe tener el formato 00000000-0.")
-    .optional().nullable().transform((valor) => valor || null),
+  dui: z.string().trim().optional().nullable()
+    .transform((valor) => valor || null)
+    .transform((valor) => valor === null ? null : normalizarDui(valor))
+    .refine((valor) => valor === null || esFormatoDui(valor), {
+      message: "El DUI debe tener 9 dígitos, con o sin guion.",
+    }),
   telefono: textoRequerido(30),
   correo: textoOpcional(254).refine((valor) => valor === null || z.email().safeParse(valor).success, {
     message: "El correo no tiene un formato válido.",

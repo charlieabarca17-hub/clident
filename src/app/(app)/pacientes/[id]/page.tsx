@@ -83,9 +83,12 @@ export default async function PacienteExpedientePage({ params, searchParams }: P
             <a href="#resumen" className="rounded-full bg-neutral-900 px-3 py-1.5 font-medium text-white">Resumen</a>
             <a href="#agenda" className="rounded-full border px-3 py-1.5 font-medium">Agenda</a>
             {puedeLeerClinico ? <a href="#alertas" className="rounded-full border px-3 py-1.5 font-medium">Alertas médicas</a> : null}
-            <span className="rounded-full border border-dashed px-3 py-1.5 text-neutral-500">Historial clínico · Próximamente</span>
-            <span className="rounded-full border border-dashed px-3 py-1.5 text-neutral-500">Odontograma · Próximamente</span>
-            <span className="rounded-full border border-dashed px-3 py-1.5 text-neutral-500">Planes y caja · Próximamente</span>
+            {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/diagnosticos`} className="rounded-full border px-3 py-1.5 font-medium">Diagnósticos</Link> : null}
+            {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/odontograma`} className="rounded-full border px-3 py-1.5 font-medium">Odontograma</Link> : null}
+            {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/planes`} className="rounded-full border px-3 py-1.5 font-medium">Planes</Link> : null}
+            {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/procedimientos`} className="rounded-full border px-3 py-1.5 font-medium">Procedimientos</Link> : null}
+            {tienePermiso(ctx.roles, "caja:read") ? <Link href={`/caja/${paciente.id}`} className="rounded-full border px-3 py-1.5 font-medium">Estado de cuenta</Link> : null}
+            <Link href={`/pacientes/${paciente.id}/historial`} className="rounded-full border px-3 py-1.5 font-medium">Historial</Link>
           </nav>
         </header>
 

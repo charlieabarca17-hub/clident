@@ -16,6 +16,9 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "invitar-admin": "node --experimental-strip-types infra/crear-invitacion.ts",
     "seed:dientes": "node --experimental-strip-types prisma/seed/dientes.ts",
+    "seed:catalogo": "node --experimental-strip-types prisma/seed/tratamientos.ts",
+    "odontograma:rebuild": "node --experimental-strip-types infra/reconstruir-odontograma.ts",
+    "reconciliar": "node --experimental-strip-types infra/reconciliar.ts",
     "prisma:generate": "prisma generate"
   },
   "dependencies": {

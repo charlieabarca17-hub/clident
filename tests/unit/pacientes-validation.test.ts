@@ -45,10 +45,10 @@ describe("validación de paciente", () => {
     expect(esMenorDeEdad(new Date(Date.UTC(2008, 6, 17)), hoy)).toBe(false);
   });
 
-  it("normaliza los opcionales vacíos a null y conserva el DUI con formato válido", () => {
+  it("normaliza los opcionales vacíos a null y agrega el guion al DUI de nueve dígitos", () => {
     const resultado = CrearPacienteSchema.parse({
       ...pacienteBase("1990-01-20"),
-      dui: "01234567-8",
+      dui: "012345678",
       correo: "",
       direccion: "",
     });
@@ -58,5 +58,13 @@ describe("validación de paciente", () => {
       direccion: null,
       responsable: null,
     });
+  });
+
+  it("acepta el DUI vacío como un dato opcional", () => {
+    const resultado = CrearPacienteSchema.parse({
+      ...pacienteBase("1990-01-20"),
+      dui: "",
+    });
+    expect(resultado.dui).toBeNull();
   });
 });
