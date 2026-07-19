@@ -521,7 +521,10 @@ model SuperficieDiente {
 }
 
 // El hecho clínico ocurrido (§10.5). PARCIALMENTE_INMUTABLE: qué se hizo, a
-// quién, cuándo, por quién y a qué precio NO se puede reescribir — solo el
+// quién, cuándo, por quién y la asignación histórica del precio NO se puede
+// reescribir. ADR-017: la primera sesión lleva el total acordado y las demás 0;
+// el índice parcial que garantiza una sola sesión con precio vive en migración.
+// Solo el
 // estado, la nota (12 h) y los campos de anulación son mutables, por privilegio.
 model Procedimiento {
   id                     String              @id @default(cuid())
@@ -591,6 +594,7 @@ model ProcedimientoDiente {
 // ÚNICO origen de la cuenta por cobrar (ADR-007): un Cargo existe porque un
 // humano con caja:write lo creó. PARCIALMENTE_INMUTABLE: monto, paciente y
 // fecha exigible no se reescriben; un monto equivocado se anula y se recrea.
+// ADR-017: un índice parcial impide más de un cargo directo vigente por PlanItem.
 model Cargo {
   id                    String     @id @default(cuid())
   clinicaId             String     @map("clinica_id")

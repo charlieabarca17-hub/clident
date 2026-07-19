@@ -7,11 +7,13 @@ import { hoyElSalvador } from "@/lib/fechas";
 import type {
   AplicarPagoInput,
   CrearCalendarioCuotasInput,
+  CrearCargoDePlanInput,
   CrearCargoInput,
   RegistrarPagoInput,
 } from "@/lib/validation/caja";
 
 import { aplicarMontoACargo } from "./raw/aplicar-monto-cargo";
+import { bloquearPlanItemParaCaja } from "./raw/bloquear-plan-item-caja";
 import { saldosDePaciente } from "./raw/saldos-paciente";
 import { conTenant, type TenantTransaction } from "./tenant";
 
@@ -115,7 +117,8 @@ async function crearCargoEnTx(tx: TenantTransaction, ctx: TenantContext, input: 
     });
     if (!paciente) return null;
 
-    // Las líneas con procedimiento validan y RECLAMAN el hecho clínico.
+    // Desde ADR-017 una línea nueva nunca cobra una sesión. Los
+    // procedimientoId históricos se conservan únicamente para lectura.
     const lineas: Array<{
       procedimientoId: string | null;
       descripcion: string;
@@ -124,38 +127,18 @@ async function crearCargoEnTx(tx: TenantTransaction, ctx: TenantContext, input: 
       montoCentavos: number;
     }> = [];
     for (const linea of input.lineas) {
-      if (linea.procedimientoId) {
-        const procedimiento = await tx.procedimiento.findFirst({
-          where: {
-            id: linea.procedimientoId,
-            clinicaId: ctx.clinicaId,
-            pacienteId: paciente.id,
-            estado: "REALIZADO",
-          },
-          select: { id: true, tratamientoNombre: true, precioAplicadoCentavos: true, cargoId: true },
-        });
-        if (!procedimiento) {
-          throw new Error("Uno de los procedimientos no existe o no es cobrable.");
-        }
-        if (procedimiento.cargoId !== null) {
-          throw new Error(`«${procedimiento.tratamientoNombre}» ya está cobrado en otro cargo.`);
-        }
-        lineas.push({
-          procedimientoId: procedimiento.id,
-          descripcion: linea.descripcion ?? procedimiento.tratamientoNombre,
-          precioOriginalCentavos: linea.precioOriginalCentavos,
-          descuentoCentavos: linea.descuentoCentavos,
-          montoCentavos: linea.precioOriginalCentavos - linea.descuentoCentavos,
-        });
-      } else {
-        lineas.push({
-          procedimientoId: null,
-          descripcion: linea.descripcion!,
-          precioOriginalCentavos: linea.precioOriginalCentavos,
-          descuentoCentavos: linea.descuentoCentavos,
-          montoCentavos: linea.precioOriginalCentavos - linea.descuentoCentavos,
-        });
+      if (linea.procedimientoId !== null) {
+        throw new Error(
+          "Los tratamientos planificados se cobran por PlanItem; no se cobra una sesión por separado.",
+        );
       }
+      lineas.push({
+        procedimientoId: null,
+        descripcion: linea.descripcion!,
+        precioOriginalCentavos: linea.precioOriginalCentavos,
+        descuentoCentavos: linea.descuentoCentavos,
+        montoCentavos: linea.precioOriginalCentavos - linea.descuentoCentavos,
+      });
     }
     const montoTotal = lineas.reduce((suma, linea) => suma + linea.montoCentavos, 0);
 
@@ -205,13 +188,89 @@ async function crearCargoEnTx(tx: TenantTransaction, ctx: TenantContext, input: 
 }
 
 /**
- * LA ÚNICA VÍA de entrada a la cuenta por cobrar (ADR-007). La invoca un humano
- * con caja:write desde el módulo de Caja — nada más en el código la importa, y
- * no existe variante automática: las cuotas son esta misma lógica, N veces.
+ * Crea cargos libres desde Caja (ADR-007). Los tratamientos de un plan usan
+ * crearCargoDePlan o crearCalendarioCuotas para conservar una sola unidad de cobro.
  */
-export async function crearCargo(ctx: TenantContext, input: CrearCargoInterno) {
+export async function crearCargo(ctx: TenantContext, input: CrearCargoInput) {
   requirePermiso(ctx, "caja:write");
+  if (input.lineas.some((linea) => linea.procedimientoId !== null)) {
+    throw new Error(
+      "Los tratamientos planificados se cobran por PlanItem; no se cobra una sesión por separado.",
+    );
+  }
   return conTenant(ctx, (tx) => crearCargoEnTx(tx, ctx, input));
+}
+
+/**
+ * Cobra el tratamiento del plan una sola vez, por el total que fijó el
+ * odontólogo para este paciente. Al menos una sesión debe haberse realizado;
+ * la creación sigue siendo una decisión humana y separada de Caja (ADR-007).
+ */
+export async function crearCargoDePlan(ctx: TenantContext, input: CrearCargoDePlanInput) {
+  requirePermiso(ctx, "caja:write");
+  return conTenant(ctx, async (tx) => {
+    if (
+      !(await bloquearPlanItemParaCaja(tx, {
+        clinicaId: ctx.clinicaId,
+        planItemId: input.planItemId,
+      }))
+    ) {
+      return null;
+    }
+
+    const planItem = await tx.planItem.findFirst({
+      where: {
+        id: input.planItemId,
+        clinicaId: ctx.clinicaId,
+        estado: { in: ["ACEPTADO", "EN_PROCESO", "COMPLETADO"] },
+        plan: { estado: "ACEPTADO", pacienteId: input.pacienteId },
+        procedimientos: { some: { estado: "REALIZADO" } },
+      },
+      select: {
+        id: true,
+        tratamientoNombre: true,
+        precioUnitarioCentavos: true,
+        descuentoCentavos: true,
+        cargos: { where: { anuladoEn: null }, select: { id: true }, take: 1 },
+        procedimientos: {
+          where: { estado: "REALIZADO", cargoId: { not: null } },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+    if (!planItem) {
+      throw new Error("El tratamiento no pertenece a un plan aceptado o todavía no se realizó.");
+    }
+    if (planItem.cargos.length > 0) {
+      throw new Error("Este tratamiento ya tiene un cobro vigente, único o por cuotas.");
+    }
+    // Compatibilidad con cargos históricos creados por sesión antes del ADR-017.
+    if (planItem.procedimientos.length > 0) {
+      throw new Error("Este tratamiento ya fue cobrado por el flujo anterior de sesiones.");
+    }
+
+    const totalCentavos = planItem.precioUnitarioCentavos - planItem.descuentoCentavos;
+    if (totalCentavos <= 0) {
+      throw new Error("Este tratamiento no tiene un monto positivo pendiente de cobro.");
+    }
+
+    return crearCargoEnTx(tx, ctx, {
+      pacienteId: input.pacienteId,
+      descripcion: `Tratamiento · ${planItem.tratamientoNombre}`,
+      fechaExigibleEn: input.fechaExigibleEn,
+      lineas: [
+        {
+          procedimientoId: null,
+          descripcion: planItem.tratamientoNombre,
+          precioOriginalCentavos: planItem.precioUnitarioCentavos,
+          descuentoCentavos: planItem.descuentoCentavos,
+        },
+      ],
+      planItemId: planItem.id,
+      cuotaNumero: null,
+    });
+  });
 }
 
 /**
@@ -222,6 +281,14 @@ export async function crearCargo(ctx: TenantContext, input: CrearCargoInterno) {
 export async function crearCalendarioCuotas(ctx: TenantContext, input: CrearCalendarioCuotasInput) {
   requirePermiso(ctx, "caja:write");
   return conTenant(ctx, async (tx) => {
+    if (
+      !(await bloquearPlanItemParaCaja(tx, {
+        clinicaId: ctx.clinicaId,
+        planItemId: input.planItemId,
+      }))
+    ) {
+      throw new Error("El tratamiento del plan no existe.");
+    }
     const planItem = await tx.planItem.findFirst({
       where: {
         id: input.planItemId,
@@ -232,15 +299,32 @@ export async function crearCalendarioCuotas(ctx: TenantContext, input: CrearCale
       select: {
         id: true,
         tratamientoNombre: true,
-        cargos: { where: { cuotaNumero: { not: null }, anuladoEn: null }, select: { id: true } },
+        precioUnitarioCentavos: true,
+        descuentoCentavos: true,
+        cargos: { where: { anuladoEn: null }, select: { id: true } },
+        procedimientos: {
+          where: { estado: "REALIZADO", cargoId: { not: null } },
+          select: { id: true },
+          take: 1,
+        },
       },
     });
     if (!planItem) {
       throw new Error("El tratamiento no pertenece a un plan aceptado de este paciente.");
     }
-    // La unicidad [clinicaId, planItemId, cuotaNumero] respalda esto en la base.
+    // No se mezclan cobro único y cuotas; el lock evita carreras entre ambos.
     if (planItem.cargos.length > 0) {
-      throw new Error("Este tratamiento ya tiene un calendario de cuotas vigente.");
+      throw new Error("Este tratamiento ya tiene un cobro vigente, único o por cuotas.");
+    }
+    if (planItem.procedimientos.length > 0) {
+      throw new Error("Este tratamiento ya fue cobrado por el flujo anterior de sesiones.");
+    }
+    const totalAcordado = planItem.precioUnitarioCentavos - planItem.descuentoCentavos;
+    const totalCalendario = input.montoCuotaCentavos * input.fechas.length;
+    if (totalCalendario !== totalAcordado) {
+      throw new Error(
+        "La suma de las cuotas debe ser exactamente igual al precio total acordado en el plan.",
+      );
     }
 
     let creados = 0;
@@ -526,41 +610,92 @@ export async function getEstadoCuenta(ctx: TenantContext, pacienteId: string) {
   });
 }
 
-/**
- * La lista de trabajo de Caja: procedimientos realizados que un humano puede
- * decidir cobrar. Excluye los cubiertos por calendario de cuotas (ADR-016 #18):
- * la activación mensual de una ortodoncia con cuotas no debe cobrarse dos veces.
- */
-export async function listarRealizadosSinCargo(ctx: TenantContext) {
+/** Datos financieros mínimos que Caja necesita para acordar cuotas, sin leer contenido clínico. */
+export async function listarTratamientosParaCuotas(
+  ctx: TenantContext,
+  pacienteId: string,
+) {
   requirePermiso(ctx, "caja:read");
   return conTenant(ctx, async (tx) => {
-    const procedimientos = await tx.procedimiento.findMany({
+    const items = await tx.planItem.findMany({
       where: {
         clinicaId: ctx.clinicaId,
-        estado: "REALIZADO",
-        cargoId: null,
-        planItem: {
-          cargos: { none: { cuotaNumero: { not: null }, anuladoEn: null } },
-        },
+        estado: { in: ["ACEPTADO", "EN_PROCESO", "COMPLETADO"] },
+        plan: { estado: "ACEPTADO", pacienteId },
+        cargos: { none: { anuladoEn: null } },
+        procedimientos: { none: { cargoId: { not: null } } },
       },
       select: {
         id: true,
-        pacienteId: true,
         tratamientoNombre: true,
-        precioAplicadoCentavos: true,
-        realizadoEn: true,
-        paciente: { select: { nombres: true, apellidos: true } },
+        precioUnitarioCentavos: true,
+        descuentoCentavos: true,
       },
-      orderBy: { realizadoEn: "asc" },
+      orderBy: { creadoEn: "asc" },
+      take: 100,
+    });
+    return items
+      .map((item) => ({
+        id: item.id,
+        tratamientoNombre: item.tratamientoNombre,
+        precioAcordadoCentavos: item.precioUnitarioCentavos - item.descuentoCentavos,
+      }))
+      .filter((item) => item.precioAcordadoCentavos > 0);
+  });
+}
+
+/**
+ * La lista de trabajo de Caja: un PlanItem aparece una sola vez cuando ya tiene
+ * al menos una sesión realizada. Así tres sesiones no se convierten en tres
+ * oportunidades de cobro (ADR-017).
+ */
+export async function listarTratamientosRealizadosSinCargo(
+  ctx: TenantContext,
+  pacienteId?: string,
+) {
+  requirePermiso(ctx, "caja:read");
+  return conTenant(ctx, async (tx) => {
+    const items = await tx.planItem.findMany({
+      where: {
+        clinicaId: ctx.clinicaId,
+        estado: { in: ["ACEPTADO", "EN_PROCESO", "COMPLETADO"] },
+        plan: { estado: "ACEPTADO", ...(pacienteId ? { pacienteId } : {}) },
+        procedimientos: {
+          some: { estado: "REALIZADO" },
+          none: { estado: "REALIZADO", cargoId: { not: null } },
+        },
+        cargos: { none: { anuladoEn: null } },
+      },
+      select: {
+        id: true,
+        tratamientoNombre: true,
+        precioUnitarioCentavos: true,
+        descuentoCentavos: true,
+        plan: {
+          select: {
+            pacienteId: true,
+            paciente: { select: { nombres: true, apellidos: true } },
+          },
+        },
+        procedimientos: {
+          where: { estado: "REALIZADO" },
+          select: { realizadoEn: true },
+          orderBy: { realizadoEn: "asc" },
+          take: 1,
+        },
+      },
       take: 200,
     });
-    return procedimientos.map((procedimiento) => ({
-      id: procedimiento.id,
-      pacienteId: procedimiento.pacienteId,
-      pacienteNombre: `${procedimiento.paciente.nombres} ${procedimiento.paciente.apellidos}`,
-      tratamientoNombre: procedimiento.tratamientoNombre,
-      precioAplicadoCentavos: procedimiento.precioAplicadoCentavos,
-      realizadoEn: procedimiento.realizadoEn.toISOString(),
-    }));
+    return items
+      .map((item) => ({
+        id: item.id,
+        pacienteId: item.plan.pacienteId,
+        pacienteNombre: `${item.plan.paciente.nombres} ${item.plan.paciente.apellidos}`,
+        tratamientoNombre: item.tratamientoNombre,
+        precioAcordadoCentavos: item.precioUnitarioCentavos - item.descuentoCentavos,
+        realizadoEn: item.procedimientos[0].realizadoEn.toISOString(),
+      }))
+      .filter((item) => item.precioAcordadoCentavos > 0)
+      .sort((a, b) => a.realizadoEn.localeCompare(b.realizadoEn));
   });
 }

@@ -9,7 +9,7 @@ import { CrearPacienteSchema } from "@/lib/validation/pacientes";
 import type { TenantContext } from "@/server/auth/types";
 import {
   crearCalendarioCuotas,
-  crearCargo,
+  crearCargoDePlan,
   registrarPago,
 } from "@/server/db/caja";
 import { clonarCatalogo, listarCatalogo } from "@/server/db/catalogo";
@@ -123,6 +123,7 @@ beforeAll(async () => {
     planId: plan!.id,
     tratamientoId: resinaId,
     diagnosticoId: null,
+    precioAcordadoCentavos: 4500,
     descuentoCentavos: 0,
     dientes: [{ fdi: 26, superficie: "OCLUSAL" }],
   });
@@ -130,6 +131,7 @@ beforeAll(async () => {
     planId: plan!.id,
     tratamientoId: brackets,
     diagnosticoId: null,
+    precioAcordadoCentavos: 108000,
     descuentoCentavos: 0,
     dientes: [],
   });
@@ -137,7 +139,7 @@ beforeAll(async () => {
   await presentarPlan(ctx, plan!.id);
   await aceptarPlan(ctx, { planId: plan!.id, itemIds: [itemResina.id, itemOrto.id] });
 
-  const procedimiento = await realizarProcedimiento(ctx, {
+  await realizarProcedimiento(ctx, {
     pacienteId,
     planItemId: itemResina.id,
     realizadoEn: new Date(),
@@ -146,18 +148,10 @@ beforeAll(async () => {
     dientes: [{ fdi: 26, superficie: "OCLUSAL" }],
   });
 
-  await crearCargo(ctx, {
+  await crearCargoDePlan(ctx, {
     pacienteId,
-    descripcion: "Cobro de resina",
+    planItemId: itemResina.id,
     fechaExigibleEn: hoy,
-    lineas: [
-      {
-        procedimientoId: procedimiento!.id,
-        descripcion: null,
-        precioOriginalCentavos: 4500,
-        descuentoCentavos: 0,
-      },
-    ],
   });
   await registrarPago(ctx, {
     pacienteId,
@@ -205,14 +199,14 @@ describe("dashboard", () => {
     expect(tablero.ingresosHoyCentavos).toBe(2000);
     expect(tablero.materialesBajoMinimo).toBe(1);
     // El procedimiento de la resina ya está cobrado.
-    expect(tablero.procedimientosSinCargo).toBe(0);
+    expect(tablero.tratamientosSinCargo).toBe(0);
   });
 
   it("recepción no ve dinero: los campos llegan en null, no filtrados en la UI", async () => {
     const tablero = await getDashboard(ctxRecepcion);
     expect(tablero.cuentasPorCobrarCentavos).toBeNull();
     expect(tablero.ingresosHoyCentavos).toBeNull();
-    expect(tablero.procedimientosSinCargo).toBeNull();
+    expect(tablero.tratamientosSinCargo).toBeNull();
     expect(tablero.materialesBajoMinimo).toBeNull();
     // La agenda sí la ve.
     expect(tablero.citasHoy).toBe(1);

@@ -10,7 +10,7 @@ CLIDENT es un sistema de gestión para clínicas odontológicas, multi-clínica 
 
 ## 0. El párrafo que resume todo
 
-> Toda tabla tiene `clinicaId`. Toda lectura usa `findFirst({ where: { id, clinicaId: ctx.clinicaId } })` — **nunca** `findUnique({ where: { id } })`. Solo `src/server/db/**` importa Prisma. Los precios son centavos enteros, copiados (congelados) al escribir: **si hacés join a `Tratamiento` para obtener el precio de un plan existente, introdujiste un bug**. Los datos clínicos nunca se borran ni se sobrescriben: los cambios del odontograma son filas nuevas de `EventoOdontograma`, las correcciones de procedimientos son filas de `EnmiendaProcedimiento`, y todo lo demás se anula con motivo. Un tratamiento presupuestado o realizado **no** entra a la cuenta por cobrar: eso pasa solo cuando existe una fila de `Cargo`, y los `Cargo` los crea únicamente un humano desde el módulo de Caja — **incluidas las cuotas de ortodoncia, que exigen una acción de Caja aparte de la aceptación del plan**. `set_config('app.clinica_id', ..., true)` solo se toca en `src/server/db/tenant.ts`, y el tercer parámetro `true` es obligatorio: sin él, el pooler filtra datos entre clínicas. **Nunca corras `prisma db push`**: borra en silencio el constraint de solapamiento de citas, las políticas RLS y la columna `dui_enmascarado`, que viven en migraciones SQL escritas a mano. Ante la duda, agregá un constraint de base de datos, no una validación en código.
+> Toda tabla tiene `clinicaId`. Toda lectura usa `findFirst({ where: { id, clinicaId: ctx.clinicaId } })` — **nunca** `findUnique({ where: { id } })`. Solo `src/server/db/**` importa Prisma. Los precios son centavos enteros y quedan congelados al escribir: el catálogo solo sugiere; el odontólogo fija el precio de cada paciente al crear el `PlanItem`. **Si hacés join a `Tratamiento` para obtener el precio de un plan existente, introdujiste un bug**. Los datos clínicos nunca se borran ni se sobrescriben: los cambios del odontograma son filas nuevas de `EventoOdontograma`, las correcciones de procedimientos son filas de `EnmiendaProcedimiento`, y todo lo demás se anula con motivo. Un tratamiento presupuestado o realizado **no** entra a la cuenta por cobrar: eso pasa solo cuando existe una fila de `Cargo`, y los `Cargo` los crea únicamente un humano desde el módulo de Caja. Un tratamiento multisesión se cobra una sola vez por su `PlanItem`; las cuotas exigen una acción de Caja aparte de la aceptación del plan. `set_config('app.clinica_id', ..., true)` solo se toca en `src/server/db/tenant.ts`, y el tercer parámetro `true` es obligatorio: sin él, el pooler filtra datos entre clínicas. **Nunca corras `prisma db push`**: borra en silencio el constraint de solapamiento de citas, las políticas RLS y la columna `dui_enmascarado`, que viven en migraciones SQL escritas a mano. Ante la duda, agregá un constraint de base de datos, no una validación en código.
 
 ---
 
@@ -119,13 +119,14 @@ PACIENTE → EXPEDIENTE → ODONTOGRAMA → DIAGNÓSTICO → PLAN DE TRATAMIENTO
 
 ## 7. Precios históricos (snapshots)
 
-> `Tratamiento.precioListaCentavos` se lee **exactamente una vez**: al crear un `PlanItem`. Después, el precio del plan es `PlanItem.precioUnitarioCentavos`.
+> `Tratamiento.precioListaCentavos` es una referencia visual. Al crear el `PlanItem`, el odontólogo fija `PlanItem.precioUnitarioCentavos` para ese paciente; después queda inmutable.
 
 **Cualquier consulta que haga join de `PlanItem` (o `Procedimiento`, o `LineaCargo`) a `Tratamiento` para mostrar o calcular un precio es un bug.**
 
 - Cambiar el precio del catálogo **nunca** altera un plan existente — **ni siquiera uno en `BORRADOR`**.
 - También se congelan `tratamientoNombre` y `tratamientoCodigo`: renombrar "Resina" → "Restauración con resina" no debe reescribir la historia.
 - Desactivar un tratamiento (`activo = false`) solo lo saca del selector. **Nunca afecta planes existentes.**
+- El precio del `PlanItem` es el total del tratamiento completo. Si hay varias sesiones, la primera conserva ese total como snapshot clínico y las siguientes llevan $0; Caja cobra el `PlanItem` una sola vez (ADR-017).
 
 **Advertencia para agentes:** vas a ver `tratamientoNombre` duplicado en `PlanItem` y te va a dar ganas de "normalizarlo" con un join. **Eso es exactamente el bug.** Los campos snapshot son deliberados. No los toques.
 
@@ -143,14 +144,14 @@ PACIENTE → EXPEDIENTE → ODONTOGRAMA → DIAGNÓSTICO → PLAN DE TRATAMIENTO
 
 > **CLIDENT no decide cuándo nace una obligación jurídica** — eso lo deciden el contrato, el consentimiento firmado y la ley. Lo que este sistema define es **cuándo reconoce una cuenta por cobrar**. No escribas que "la deuda no existe" antes del `Cargo`: escribí que **no está registrada**.
 
-**No existe ninguna ruta automática de plan o procedimiento a `Cargo`.** Solo `crearCargo(ctx, ...)`, invocada desde el módulo de Caja por un usuario con permiso `caja:write`. **Nada más en el código importa esa función.**
+**No existe ninguna ruta automática de plan o procedimiento a `Cargo`.** Las operaciones que crean cargos viven únicamente en `src/server/db/caja.ts`, se invocan desde el módulo Caja y exigen `caja:write`.
 
 - Aceptar un `PlanTratamiento` **no** crea cargos.
 - Aceptar un `PlanItem` **no** crea cargos.
 - Realizar un procedimiento **no** crea cargos.
-- Caja muestra "procedimientos realizados sin cargo" como lista de trabajo, y **un humano decide**.
+- Caja muestra "tratamientos realizados sin cargo" —una fila por `PlanItem`, no una por sesión— y **un humano decide**.
 
-**Las cuotas de ortodoncia NO son la excepción.** Aceptar el plan no las crea: **una persona de Caja crea el calendario en una acción aparte**, y esa acción llama a la misma `crearCargo()` N veces. **No escribas una variante automática "para cuotas"** — sería la excepción que se come la regla, justo en el caso más grande de la clínica (`REGLAS-DE-NEGOCIO.md` §1.9).
+**Las cuotas de ortodoncia NO son la excepción.** Aceptar el plan no las crea: **una persona de Caja crea el calendario en una acción aparte**. La operación crea N cargos atómicamente desde el mismo repositorio de Caja; nunca desde Planes o Procedimientos (`REGLAS-DE-NEGOCIO.md` §1.9).
 
 **"Saldo" a secas no existe: hay cuatro** (§12.6 de `ARQUITECTURA.md`, ADR-013). Todo `Cargo` lleva `fechaExigibleEn`, y **nacer no es lo mismo que vencer**.
 

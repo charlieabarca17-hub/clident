@@ -8,6 +8,7 @@ import {
   AnularConMotivoSchema,
   AplicarPagoSchema,
   CrearCalendarioCuotasSchema,
+  CrearCargoDePlanSchema,
   CrearCargoSchema,
   RegistrarPagoSchema,
   ReversarAplicacionSchema,
@@ -20,6 +21,7 @@ import {
   aplicarPago,
   crearCalendarioCuotas,
   crearCargo,
+  crearCargoDePlan,
   registrarPago,
   reversarAplicacion,
 } from "@/server/db/caja";
@@ -37,30 +39,17 @@ function volver(pacienteId: string, ok: boolean): never {
   redirect(ok ? ruta(pacienteId) : `${ruta(pacienteId)}?estado=no-disponible`);
 }
 
-/** Cobra procedimientos realizados: una línea por procedimiento marcado. */
-export async function crearCargoDesdeProcedimientos(formData: FormData): Promise<never> {
+/** Cobra una vez el precio total acordado en el plan, sin multiplicarlo por sesiones. */
+export async function crearCargoDesdeTratamientoPlan(formData: FormData): Promise<never> {
   const ctx = await requireCtx();
   requirePermiso(ctx, "caja:write");
   const pacienteId = texto(formData, "pacienteId");
-  const procedimientos = formData.getAll("procedimientoIds").map(String).filter(Boolean);
-
-  const lineas = procedimientos.map((procedimientoId) => {
-    const precio = centavosDesdeTexto(texto(formData, `precio-${procedimientoId}`));
-    const descuentoTexto = texto(formData, `descuento-${procedimientoId}`);
-    return {
-      procedimientoId,
-      descripcion: null,
-      precioOriginalCentavos: precio,
-      descuentoCentavos: descuentoTexto ? centavosDesdeTexto(descuentoTexto) : 0,
-    };
-  });
-  const datos = CrearCargoSchema.parse({
+  const datos = CrearCargoDePlanSchema.parse({
     pacienteId,
-    descripcion: texto(formData, "descripcion") || "Cobro de procedimientos",
+    planItemId: texto(formData, "planItemId"),
     fechaExigibleEn: texto(formData, "fechaExigibleEn"),
-    lineas,
   });
-  const cargo = await crearCargo(ctx, datos);
+  const cargo = await crearCargoDePlan(ctx, datos);
   volver(pacienteId, cargo !== null);
 }
 

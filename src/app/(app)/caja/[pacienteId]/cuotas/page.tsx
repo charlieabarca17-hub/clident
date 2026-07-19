@@ -6,7 +6,7 @@ import { centavosDesdeTexto, formatearUSD } from "@/lib/money";
 import { confirmarCalendarioCuotas } from "@/server/actions/caja";
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso } from "@/server/auth/permissions";
-import { getEstadoCuenta } from "@/server/db/caja";
+import { getEstadoCuenta, listarTratamientosParaCuotas } from "@/server/db/caja";
 
 type CuotasPageProps = {
   params: Promise<{ pacienteId: string }>;
@@ -32,7 +32,10 @@ export default async function ConfirmarCuotasPage({ params, searchParams }: Cuot
   const ctx = await requireCtx();
   requirePermiso(ctx, "caja:write");
 
-  const cuenta = await getEstadoCuenta(ctx, pacienteId);
+  const [cuenta, itemsParaCuotas] = await Promise.all([
+    getEstadoCuenta(ctx, pacienteId),
+    listarTratamientosParaCuotas(ctx, pacienteId),
+  ]);
   if (!cuenta) notFound();
 
   const planItemId = consulta.planItemId?.trim() ?? "";
@@ -44,6 +47,10 @@ export default async function ConfirmarCuotasPage({ params, searchParams }: Cuot
     montoCentavos !== null && montoCentavos > 0 && /^\d{4}-\d{2}-\d{2}$/.test(inicio);
 
   const fechas = parametrosValidos ? generarFechasCuotasMensuales(inicio, cantidad) : [];
+  const tratamiento = itemsParaCuotas.find((item) => item.id === planItemId);
+  const totalCalendario = montoCentavos === null ? 0 : montoCentavos * cantidad;
+  const totalCoincide =
+    tratamiento !== undefined && totalCalendario === tratamiento.precioAcordadoCentavos;
 
   return (
     <main className="min-h-full bg-background p-5 sm:p-8">
@@ -67,8 +74,13 @@ export default async function ConfirmarCuotasPage({ params, searchParams }: Cuot
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Revisá cada fecha antes de confirmar. Solo la primera cuota vencida o de hoy entra
-              al «debe hoy»; las demás son futuras hasta que les llegue el día.
+              al «debe hoy»; las demás son futuras. La suma debe coincidir con el precio del plan.
             </p>
+            {tratamiento && !totalCoincide ? (
+              <p role="alert" className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                Las cuotas suman {formatearUSD(totalCalendario)}, pero el precio acordado es {formatearUSD(tratamiento.precioAcordadoCentavos)}. Volvé y ajustá la cantidad o el monto.
+              </p>
+            ) : null}
             <ol className="mt-4 grid gap-1.5 text-sm sm:grid-cols-2">
               {fechas.map((fecha, indice) => (
                 <li key={fecha} className="flex items-center justify-between rounded-lg border px-3 py-2">
@@ -87,9 +99,11 @@ export default async function ConfirmarCuotasPage({ params, searchParams }: Cuot
               <p className="text-sm text-muted-foreground">
                 Total del calendario: <strong className="font-mono">{formatearUSD(montoCentavos! * cantidad)}</strong>
               </p>
-              <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-5 py-2.5 text-sm font-medium text-primary-foreground">
-                Confirmar y crear las {cantidad} cuotas
-              </button>
+              {totalCoincide ? (
+                <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-5 py-2.5 text-sm font-medium text-primary-foreground">
+                  Confirmar y crear las {cantidad} cuotas
+                </button>
+              ) : null}
             </form>
           </section>
         )}

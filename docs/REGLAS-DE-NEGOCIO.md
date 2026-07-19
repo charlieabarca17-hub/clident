@@ -38,7 +38,7 @@ Cuando dice *"la base de datos lo impide"*, significa que no es una advertencia 
 
 **Por qué:** puede ser una cortesía, una garantía, una corrección de un trabajo previo, parte de un paquete ya cobrado, o algo que la clínica decidió no cobrar. **Cobrar es una decisión humana, no una consecuencia mecánica de haber trabajado.** El sistema no decide a quién se le cobra.
 
-**Cómo se garantiza:** registrar un procedimiento no crea ningún cargo. Caja muestra una lista de "procedimientos realizados que todavía no se cobraron", y una persona decide cuáles trasladar.
+**Cómo se garantiza:** registrar un procedimiento no crea ningún cargo. Caja muestra una lista de "tratamientos realizados que todavía no se cobraron", una sola fila por tratamiento del plan aunque tenga varias sesiones, y una persona decide cuáles trasladar.
 
 ## 1.3 La cuenta por cobrar se registra únicamente cuando Caja crea un Cargo
 
@@ -62,7 +62,7 @@ Los cinco estados del dinero **en CLIDENT**, en orden:
 
 **Ojo:** que un cargo **se registre** no significa que sea **exigible hoy**. Son dos cosas distintas y el sistema las separa — ver §1.8.
 
-**Cómo se garantiza:** existe una sola función en todo el código capaz de crear un cargo, y solo la usa el módulo de Caja.
+**Cómo se garantiza:** todas las operaciones capaces de crear cargos viven exclusivamente en el módulo Caja, exigen su permiso y parten de una acción humana.
 
 **Las tres rutas que NO existen, y que la arquitectura impide:**
 
@@ -111,9 +111,11 @@ Además, **la base de datos obliga al orden correcto**: un cargo con dinero apli
 
 **Igual que todo lo demás: no se borra.** El pago anulado sigue visible, con su motivo y su responsable.
 
-## 1.7 Un procedimiento no se puede cobrar dos veces
+## 1.7 Un tratamiento no se puede cobrar dos veces
 
-**Cómo se garantiza:** la base de datos lo impide. Si alguien intenta crear un segundo cargo por el mismo procedimiento, la operación es rechazada.
+**La regla:** el precio acordado cubre el tratamiento completo. Caja puede crear un cargo único o un calendario de cuotas por ese total, pero no ambos ni uno por cada sesión.
+
+**Cómo se garantiza:** Caja cobra el tratamiento del plan, no las sesiones por separado. La base de datos impide dos cargos directos vigentes para el mismo tratamiento, y el servidor rechaza cualquier segundo cobro o calendario mientras ya exista uno vigente.
 
 ## 1.8 Cuánto debe un paciente depende de la fecha, no solo del total
 
@@ -178,7 +180,7 @@ Además, **la base de datos obliga al orden correcto**: un cargo con dinero apli
 
 **Y fijate en el 16/09**, el día del medio: el sistema muestra **$0 cargado** aunque la mamá **ya firmó por $1,080**. Eso es correcto y es exactamente lo que §1.3 explica: **CLIDENT no dice qué debe jurídicamente; dice qué está cargado.** El contrato firmado el 15 existe y obliga según el derecho — el sistema solo no había cargado nada todavía. Por eso el cuarto saldo **no se llama "total del contrato"**: si se llamara así, estaría mintiendo esos tres días.
 
-**Cómo se garantiza:** es la misma garantía de §1.3 — existe una sola función capaz de crear un cargo y solo la usa Caja. **No hay una versión "automática" de esa función para ortodoncia.** La creación del calendario es esa misma función, llamada 18 veces por una persona que apretó un botón.
+**Cómo se garantiza:** es la misma garantía de §1.3: solo Caja crea cargos. El calendario nace atómicamente cuando una persona confirma todas las fechas; aceptar el plan nunca lo crea.
 
 ---
 
@@ -186,7 +188,7 @@ Además, **la base de datos obliga al orden correcto**: un cargo con dinero apli
 
 ## 2.1 Los precios de un plan no cambian nunca
 
-**La regla:** cuando se agrega un tratamiento a un plan, se **copia** su precio. Si después la clínica cambia el precio en el catálogo, **los planes ya creados no se modifican. Ni siquiera los que están en borrador.**
+**La regla:** el precio del catálogo es una referencia. Cuando se agrega un tratamiento al plan, el odontólogo decide el precio para ese paciente. Ese monto queda guardado y **no cambia nunca**, aunque después cambie el catálogo. Ni siquiera mientras el plan está en borrador.
 
 **Por qué:** un plan es un compromiso con un paciente. Si en marzo le presupuestaste una corona a $300 y en junio la clínica sube el precio a $380, ese paciente presupuestó $300. Si el sistema recalculara automáticamente, el paciente vería un número distinto al que se le dijo, y la clínica no tendría forma de demostrar qué se le ofreció ni cuándo. En términos legales: destruiría la prueba de la oferta.
 
@@ -194,13 +196,19 @@ Lo mismo aplica hacia atrás: un reporte de ingresos del año pasado debe reflej
 
 **Cómo se garantiza:** el plan guarda su propio precio y **ya no mira el catálogo**. No es que se evite consultarlo: es que el precio del plan está en otro lado.
 
-## 2.2 También se congela el nombre
+## 2.2 El precio es por el tratamiento completo, no por sesión
+
+**La regla:** si una endodoncia se acuerda en $150 y requiere tres sesiones, el total sigue siendo $150. Las sesiones son historia clínica; no son tres productos de $150.
+
+**Cómo se garantiza:** la primera sesión conserva los $150 como referencia histórica y las demás aparecen como incluidas en el total. Caja ve una sola fila por tratamiento y crea un solo cargo, o cuotas cuya suma debe dar exactamente $150.
+
+## 2.3 También se congela el nombre
 
 **La regla:** el plan guarda el nombre y el código del tratamiento tal como estaban ese día.
 
 **Por qué:** si mañana renombrás "Resina" a "Restauración con resina compuesta", los presupuestos viejos deben seguir diciendo lo que decían cuando el paciente los firmó.
 
-## 2.3 Desactivar un tratamiento no borra nada
+## 2.4 Desactivar un tratamiento no borra nada
 
 **La regla:** desactivar un tratamiento del catálogo solo lo quita de la lista de opciones nuevas. **Los planes, procedimientos e historiales que ya lo usaban siguen intactos.**
 
@@ -627,12 +635,12 @@ Ninguna bloquea el arranque. **La lista se revisó en la auditoría del Ciclo 1*
 | 7 | **¿Desde cuándo un paciente está en mora?** ¿El día después del vencimiento? ¿Hay días de gracia? La mecánica ya está (§1.8); el umbral es tuyo. | Caja | Barato |
 | 2 | ¿Hace falta **corte de caja** (apertura y cierre de turno)? No está contemplado. | Antes de Caja | Requiere corregir datos viejos |
 | 9 | **¿Cómo se le devuelve el efectivo a un paciente?** El sistema sabe reconocerle saldo a favor (§1.5), pero no sacar plata de la caja. | Antes de Caja | **Caro: migrar datos financieros** |
-| 10 | **¿Cuánto vale cada sesión** de un tratamiento que lleva varias? Ver nota abajo. | Tratamientos | **Caro: el precio de un procedimiento no se puede editar** |
+| 10 | **RESUELTO en Ciclo 15:** el odontólogo fija un precio total por paciente; la primera sesión conserva ese total, las demás van incluidas y Caja cobra una sola vez por tratamiento. | Tratamientos | Resuelto — ADR-017 |
 | 11 | **¿Número de expediente correlativo?** Un menor sin DUI no tiene con qué buscarse (§5.5). | Pacientes | Columna nueva |
 | 12 | **¿Un pago anulado se puede des-anular?** Hoy **sí**, y eso **revive el crédito de un cheque que rebotó** (§1.6). La base no lo puede atajar sola. | Antes de Caja | **Caro: cambia cómo se anula todo** |
 | 13 | **¿Un procedimiento se puede reasignar a otro plan?** Hoy no: si te olvidaste de enlazarlo, hay que anularlo y rehacerlo. ¿Esa rigidez estorba en la práctica? | Procedimientos | Barato |
 | 15 | **Un cargo mal cobrado no se puede recrear.** Anularlo y volverlo a hacer —que es lo que manda el sistema para corregir un monto— **falla**. La única salida sería anular el procedimiento, o sea ensuciar el expediente clínico por un error de tipeo en Caja. | Antes de Caja | **Sin arreglo barato** |
-| 18 | **La ortodoncia se puede cobrar dos veces.** Las cuotas del calendario y las activaciones mensuales son **dos caminos de cobro distintos** sobre el mismo tratamiento, y el sistema no los relaciona: cada activación va a aparecer en la lista de "realizados sin cargo" pidiendo que la cobren. Hoy lo único que lo impide es que la cajera se acuerde. | **Antes de Caja** | **Caro: cobros dobles ya hechos** |
+| 18 | **RESUELTO en Ciclo 15:** el cargo directo y las cuotas se cuelgan del mismo tratamiento del plan; si existe uno, el otro se rechaza. Las activaciones no crean cobros separados. | Caja | Resuelto — ADR-017 |
 
 **Resueltas en el Ciclo 1:** la **ortodoncia por cuotas** — con fechas de vencimiento, los cuatro saldos de §1.8 y la separación de §1.9, sin romper la regla de que la cuenta por cobrar se registra solo en Caja. Y los **pacientes menores de edad** — con el responsable de §5.5; solo queda el identificador (#11).
 
@@ -644,13 +652,13 @@ Un plan puede llevar descuento; **un cobro no tiene dónde guardarlo.** El descu
 
 **Es una sola decisión.** Contestarla en pedazos significa pagar la migración dos o tres veces.
 
-### #10 — Cuánto vale cada sesión
+### #10 — Cuánto vale cada sesión — **resuelto en el Ciclo 15 (ADR-017)**
 
 Una endodoncia de $150 puede hacerse en 3 sesiones. El sistema registra cada sesión por separado — eso está bien. **Lo que nadie definió es cuánto vale cada una.** Si cada sesión se queda con el precio del tratamiento completo, Caja va a ver tres cobros de $150 por un tratamiento de $150: **$450**. Y la regla de "no se cobra dos veces" **no lo detecta**, porque técnicamente son tres procedimientos distintos, cada uno cobrado una sola vez.
 
-Las opciones: la primera sesión lleva el precio y las demás van en $0; o se reparte ($50 cada una); o el cobro se cuelga del tratamiento y no de la sesión.
+Carlos decidió que los $150 son el total del tratamiento para ese paciente. La primera sesión conserva el monto y las siguientes van en $0 como sesiones incluidas; Caja cobra el tratamiento del plan, no cada sesión.
 
-**Por qué urge:** el precio de un procedimiento **no se puede editar nunca** (§3.4). Si nace mal, hay que anular y rehacer todo.
+El precio se decide al preparar el plan y queda congelado. Dos pacientes pueden tener precios distintos para el mismo tratamiento.
 
 ### #6 — Radiografías: el problema no es la tabla que falta
 
@@ -662,6 +670,6 @@ Y algo práctico: la clínica te lo va a pedir en el mes 2, no en el año 2.
 
 ---
 
-**Las más caras son la 3, la 9, la 10, la 12, la 15 y la 18:** su costo de decidirse tarde es migrar datos financieros con historia que ya no cuadra — y en el caso de la **18**, además, cobros dobles que ya le hiciste a pacientes reales.
+**Las más caras que siguen abiertas son la 3, la 9, la 12 y la 15:** su costo de decidirse tarde es migrar datos financieros con historia que ya no cuadra. Las #10 y #18 quedaron resueltas por ADR-017.
 
-**Si solo vas a mirar una: la 18.** Es la única que puede hacerte cobrar dos veces sin que nadie se dé cuenta, en el tratamiento que más ingreso te deja.
+La protección de #18 ahora está en el flujo y en la base: un tratamiento no puede tener simultáneamente cobro único y cuotas vigentes.

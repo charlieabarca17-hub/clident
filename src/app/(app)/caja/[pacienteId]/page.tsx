@@ -7,15 +7,18 @@ import {
   anularCargoDesdeFormulario,
   anularPagoDesdeFormulario,
   aplicarPagoDesdeFormulario,
-  crearCargoDesdeProcedimientos,
+  crearCargoDesdeTratamientoPlan,
   crearCargoLibre,
   registrarPagoDesdeFormulario,
   reversarAplicacionDesdeFormulario,
 } from "@/server/actions/caja";
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso, tienePermiso } from "@/server/auth/permissions";
-import { getEstadoCuenta, listarRealizadosSinCargo } from "@/server/db/caja";
-import { listarPlanes } from "@/server/db/planes";
+import {
+  getEstadoCuenta,
+  listarTratamientosParaCuotas,
+  listarTratamientosRealizadosSinCargo,
+} from "@/server/db/caja";
 
 type CuentaPageProps = {
   params: Promise<{ pacienteId: string }>;
@@ -71,17 +74,13 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
   if (!cuenta) notFound();
   const puedeEscribir = tienePermiso(ctx.roles, "caja:write");
 
-  const [pendientesTodos, planes] = puedeEscribir
-    ? await Promise.all([listarRealizadosSinCargo(ctx), listarPlanes(ctx, pacienteId)])
+  const [pendientesTodos, itemsParaCuotas] = puedeEscribir
+    ? await Promise.all([
+        listarTratamientosRealizadosSinCargo(ctx, pacienteId),
+        listarTratamientosParaCuotas(ctx, pacienteId),
+      ])
     : [[], []];
-  const pendientes = pendientesTodos.filter((p) => p.pacienteId === pacienteId);
-  const itemsParaCuotas = planes
-    .filter((plan) => plan.estado === "ACEPTADO")
-    .flatMap((plan) =>
-      plan.items.filter((item) =>
-        item.estado === "ACEPTADO" || item.estado === "EN_PROCESO" || item.estado === "COMPLETADO",
-      ),
-    );
+  const pendientes = pendientesTodos;
   const pagosConSaldo = cuenta.pagos.filter(
     (pago) => !pago.anuladoEn && pago.montoAplicadoCentavos < pago.montoCentavos,
   );
@@ -115,31 +114,29 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
         {puedeEscribir ? (
           <section className="grid gap-6 lg:grid-cols-2">
             {pendientes.length > 0 ? (
-              <form action={crearCargoDesdeProcedimientos} className="space-y-3 rounded-2xl border bg-card p-5 shadow-sm">
-                <h2 className="text-lg font-semibold">Cobrar procedimientos realizados</h2>
-                <input type="hidden" name="pacienteId" value={cuenta.paciente.id} />
-                {pendientes.map((procedimiento) => (
-                  <div key={procedimiento.id} className="rounded-lg border p-3 text-sm">
-                    <label className="flex items-center gap-2 font-medium">
-                      <input type="checkbox" name="procedimientoIds" value={procedimiento.id} defaultChecked />
-                      {procedimiento.tratamientoNombre}
-                    </label>
-                    <div className="mt-2 flex gap-2">
-                      <label className="flex-1 text-xs text-muted-foreground">Precio (USD)
-                        <input name={`precio-${procedimiento.id}`} defaultValue={usdEditable(procedimiento.precioAplicadoCentavos)} inputMode="decimal" className="mt-1 w-full rounded-lg border px-2 py-1.5" />
-                      </label>
-                      <label className="flex-1 text-xs text-muted-foreground">Descuento (USD)
-                        <input name={`descuento-${procedimiento.id}`} placeholder="0.00" inputMode="decimal" className="mt-1 w-full rounded-lg border px-2 py-1.5" />
-                      </label>
+              <section className="space-y-3 rounded-2xl border bg-card p-5 shadow-sm">
+                <h2 className="text-lg font-semibold">Tratamientos listos para cobrar</h2>
+                <p className="text-xs text-muted-foreground">
+                  El precio lo fijó el odontólogo en el plan. Caja lo registra una sola vez,
+                  aunque el tratamiento tenga varias sesiones.
+                </p>
+                {pendientes.map((tratamiento) => (
+                  <form key={tratamiento.id} action={crearCargoDesdeTratamientoPlan} className="space-y-3 rounded-lg border p-3 text-sm">
+                    <input type="hidden" name="pacienteId" value={cuenta.paciente.id} />
+                    <input type="hidden" name="planItemId" value={tratamiento.id} />
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium">{tratamiento.tratamientoNombre}</span>
+                      <span className="font-mono font-semibold">{formatearUSD(tratamiento.precioAcordadoCentavos)}</span>
                     </div>
-                  </div>
+                    <label className="block text-xs font-medium text-muted-foreground">Exigible desde
+                      <input name="fechaExigibleEn" type="date" required defaultValue={hoy} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal text-foreground" />
+                    </label>
+                    <button className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-rosa-hover">
+                      Crear cargo único
+                    </button>
+                  </form>
                 ))}
-                <label className="block text-sm font-medium">Exigible desde *
-                  <input name="fechaExigibleEn" type="date" required defaultValue={hoy} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
-                </label>
-                <input type="hidden" name="descripcion" value="Cobro de procedimientos" />
-                <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Crear cargo</button>
-              </form>
+              </section>
             ) : (
               <form action={crearCargoLibre} className="space-y-3 rounded-2xl border bg-card p-5 shadow-sm">
                 <h2 className="text-lg font-semibold">Nuevo cargo</h2>
@@ -199,7 +196,9 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
                   <label className="block text-sm font-medium">Tratamiento *
                     <select name="planItemId" required className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
                       {itemsParaCuotas.map((item) => (
-                        <option key={item.id} value={item.id}>{item.tratamientoNombre}</option>
+                        <option key={item.id} value={item.id}>
+                          {item.tratamientoNombre} · total {formatearUSD(item.precioAcordadoCentavos)}
+                        </option>
                       ))}
                     </select>
                   </label>

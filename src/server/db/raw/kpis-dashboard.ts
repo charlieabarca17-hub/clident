@@ -22,7 +22,7 @@ export type KpisDashboard = {
   ingresosHoyCentavos: bigint;
   cuentasPorCobrarCentavos: bigint;
   vencidoCentavos: bigint;
-  procedimientosSinCargo: number;
+  tratamientosSinCargo: number;
   materialesBajoMinimo: number;
 };
 
@@ -38,7 +38,7 @@ export async function kpisDelDia(
       ingresos_hoy: bigint;
       cuentas_por_cobrar: bigint;
       vencido: bigint;
-      procedimientos_sin_cargo: number;
+      tratamientos_sin_cargo: number;
       materiales_bajo_minimo: number;
     }>
   >`
@@ -62,13 +62,31 @@ export async function kpisDelDia(
       (SELECT COALESCE(SUM(monto_centavos - monto_aplicado_centavos), 0)::bigint FROM cargos
         WHERE clinica_id = ${params.clinicaId} AND anulado_en IS NULL
           AND fecha_exigible_en < ${params.hoy}::date) AS vencido,
-      (SELECT count(*)::int FROM procedimientos p
-        WHERE p.clinica_id = ${params.clinicaId} AND p.estado = 'REALIZADO' AND p.cargo_id IS NULL
+      -- ADR-017: una fila pendiente por tratamiento del plan, no por sesión.
+      (SELECT count(*)::int FROM plan_items pi
+        WHERE pi.clinica_id = ${params.clinicaId}
+          AND pi.estado IN ('ACEPTADO', 'EN_PROCESO', 'COMPLETADO')
+          AND pi.precio_unitario_centavos - pi.descuento_centavos > 0
+          AND EXISTS (
+            SELECT 1 FROM planes pl
+             WHERE pl.clinica_id = pi.clinica_id AND pl.id = pi.plan_id
+               AND pl.estado = 'ACEPTADO'
+          )
+          AND EXISTS (
+            SELECT 1 FROM procedimientos p
+             WHERE p.clinica_id = pi.clinica_id AND p.plan_item_id = pi.id
+               AND p.estado = 'REALIZADO'
+          )
           AND NOT EXISTS (
             SELECT 1 FROM cargos c
-             WHERE c.clinica_id = p.clinica_id AND c.plan_item_id = p.plan_item_id
-               AND c.cuota_numero IS NOT NULL AND c.anulado_en IS NULL
-          )) AS procedimientos_sin_cargo,
+             WHERE c.clinica_id = pi.clinica_id AND c.plan_item_id = pi.id
+               AND c.anulado_en IS NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM procedimientos p
+             WHERE p.clinica_id = pi.clinica_id AND p.plan_item_id = pi.id
+               AND p.estado = 'REALIZADO' AND p.cargo_id IS NOT NULL
+          )) AS tratamientos_sin_cargo,
       (SELECT count(*)::int FROM materiales
         WHERE clinica_id = ${params.clinicaId} AND activo = true
           AND stock_actual <= stock_minimo) AS materiales_bajo_minimo
@@ -81,7 +99,7 @@ export async function kpisDelDia(
     ingresosHoyCentavos: fila.ingresos_hoy,
     cuentasPorCobrarCentavos: fila.cuentas_por_cobrar,
     vencidoCentavos: fila.vencido,
-    procedimientosSinCargo: fila.procedimientos_sin_cargo,
+    tratamientosSinCargo: fila.tratamientos_sin_cargo,
     materialesBajoMinimo: fila.materiales_bajo_minimo,
   };
 }

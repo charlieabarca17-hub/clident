@@ -95,10 +95,9 @@ export async function crearPlan(ctx: TenantContext, input: CrearPlanInput) {
 }
 
 /**
- * Agrega un tratamiento al plan. Aquí ocurre EL snapshot (ADR-006): el precio,
- * nombre y código del catálogo se leen EXACTAMENTE UNA VEZ y quedan congelados
- * en el ítem. Después de esta función, el catálogo no tiene nada que decir
- * sobre este plan.
+ * Agrega un tratamiento al plan. Aquí ocurre EL snapshot (ADR-006/017): el
+ * odontólogo fija el precio para este paciente; nombre y código se copian del
+ * catálogo. Todo queda congelado en el ítem y el catálogo deja de intervenir.
  */
 export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItemInput) {
   requirePermiso(ctx, "clinico:write");
@@ -160,20 +159,17 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
     if (!tratamiento.permiteMultiplesSuperficies && superficiesEspecificas.length > 1) {
       throw new Error(`«${tratamiento.nombre}» admite una sola superficie.`);
     }
-    if (input.descuentoCentavos > tratamiento.precioListaCentavos) {
-      throw new Error("El descuento no puede superar el precio del tratamiento.");
-    }
-
     const item = await tx.planItem.create({
       data: {
         clinicaId: ctx.clinicaId,
         planId: plan.id,
         tratamientoId: tratamiento.id,
         diagnosticoId: input.diagnosticoId,
-        // El snapshot: la única lectura del precio de catálogo en la vida del ítem.
+        // El catálogo sugiere; el odontólogo decide el precio de este paciente.
+        // Éste es el snapshot que luego se cobra una sola vez (ADR-017).
         tratamientoCodigo: tratamiento.codigo,
         tratamientoNombre: tratamiento.nombre,
-        precioUnitarioCentavos: tratamiento.precioListaCentavos,
+        precioUnitarioCentavos: input.precioAcordadoCentavos,
         descuentoCentavos: input.descuentoCentavos,
         creadoPorId: ctx.membresiaId,
       },
@@ -191,7 +187,12 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
         })),
       });
     }
-    await registrarAuditoria(tx, ctx, "PLAN_ITEM_AGREGADO", plan.id, { itemId: item.id });
+    await registrarAuditoria(tx, ctx, "PLAN_ITEM_AGREGADO", plan.id, {
+      itemId: item.id,
+      precioSugeridoCentavos: tratamiento.precioListaCentavos,
+      precioAcordadoCentavos: input.precioAcordadoCentavos,
+      descuentoCentavos: input.descuentoCentavos,
+    });
     return toPlanDto((await getPlanInterno(tx, ctx, plan.id))!);
   });
 }

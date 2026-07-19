@@ -65,6 +65,14 @@ export const CrearCargoSchema = z
 
 export type CrearCargoInput = z.infer<typeof CrearCargoSchema>;
 
+export const CrearCargoDePlanSchema = z.object({
+  pacienteId: z.string().trim().min(1),
+  planItemId: z.string().trim().min(1, "Elegí el tratamiento del plan."),
+  fechaExigibleEn: fechaCivil,
+});
+
+export type CrearCargoDePlanInput = z.infer<typeof CrearCargoDePlanSchema>;
+
 export const CrearCalendarioCuotasSchema = z.object({
   pacienteId: z.string().trim().min(1),
   planItemId: z.string().trim().min(1, "Elegí el tratamiento del plan."),

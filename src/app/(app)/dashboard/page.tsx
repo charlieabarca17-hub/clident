@@ -104,18 +104,18 @@ export default async function DashboardPage() {
         </section>
 
         {(tablero.vencidoCentavos ?? 0) > 0 ||
-        (tablero.procedimientosSinCargo ?? 0) > 0 ||
+        (tablero.tratamientosSinCargo ?? 0) > 0 ||
         (tablero.materialesBajoMinimo ?? 0) > 0 ? (
           <section className="grid gap-4 sm:grid-cols-3" aria-label="Requiere atención">
             {(tablero.vencidoCentavos ?? 0) > 0 ? (
               <Kpi etiqueta="En mora" valor={formatearUSD(tablero.vencidoCentavos!)} nota="Vencido y aún impago" alerta />
             ) : null}
-            {(tablero.procedimientosSinCargo ?? 0) > 0 ? (
+            {(tablero.tratamientosSinCargo ?? 0) > 0 ? (
               <div className="rounded-2xl border border-advertencia/40 bg-advertencia-suave p-5 shadow-sm">
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Pendientes de cobro</p>
-                <p className="mt-1.5 font-mono text-2xl font-semibold">{tablero.procedimientosSinCargo}</p>
+                <p className="mt-1.5 font-mono text-2xl font-semibold">{tablero.tratamientosSinCargo}</p>
                 <Link href="/caja" className="mt-1 inline-block text-xs font-medium underline-offset-4 hover:underline">
-                  Procedimientos realizados sin cargo →
+                  Tratamientos realizados sin cargo →
                 </Link>
               </div>
             ) : null}

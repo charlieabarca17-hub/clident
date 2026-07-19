@@ -140,10 +140,12 @@ describe("precio congelado (ADR-006)", () => {
       planId: plan!.id,
       tratamientoId: resinaId,
       diagnosticoId: null,
+      precioAcordadoCentavos: 5750,
       descuentoCentavos: 0,
       dientes: [{ fdi: 26, superficie: "OCLUSAL" }],
     });
     const item = conItem!.items[0];
+    expect(item.precioUnitarioCentavos).toBe(5750);
     const precioOriginal = item.precioUnitarioCentavos;
     const nombreOriginal = item.tratamientoNombre;
 
@@ -187,6 +189,7 @@ describe("banderas del catálogo en el servidor", () => {
         planId: plan!.id,
         tratamientoId: endodonciaId,
         diagnosticoId: null,
+        precioAcordadoCentavos: 15000,
         descuentoCentavos: 0,
         dientes: [{ fdi: 26, superficie: "COMPLETO" }],
       }),
@@ -197,6 +200,7 @@ describe("banderas del catálogo en el servidor", () => {
       planId: plan!.id,
       tratamientoId: endodonciaId,
       diagnosticoId,
+      precioAcordadoCentavos: 15000,
       descuentoCentavos: 0,
       dientes: [{ fdi: 26, superficie: "COMPLETO" }],
     });
@@ -211,6 +215,7 @@ describe("banderas del catálogo en el servidor", () => {
         planId: plan!.id,
         tratamientoId: endodonciaId,
         diagnosticoId,
+        precioAcordadoCentavos: 15000,
         descuentoCentavos: 0,
         dientes: [
           { fdi: 26, superficie: "COMPLETO" },
@@ -228,6 +233,7 @@ describe("banderas del catálogo en el servidor", () => {
         planId: plan!.id,
         tratamientoId: profilaxisId,
         diagnosticoId: null,
+        precioAcordadoCentavos: 3000,
         descuentoCentavos: 0,
         dientes: [{ fdi: 26, superficie: "COMPLETO" }],
       }),
@@ -242,6 +248,7 @@ describe("ciclo de vida del plan", () => {
       planId: plan!.id,
       tratamientoId: resinaId,
       diagnosticoId: null,
+      precioAcordadoCentavos: 4500,
       descuentoCentavos: 500,
       dientes: [{ fdi: 14, superficie: "OCLUSAL" }],
     });
@@ -249,6 +256,7 @@ describe("ciclo de vida del plan", () => {
       planId: plan!.id,
       tratamientoId: endodonciaId,
       diagnosticoId,
+      precioAcordadoCentavos: 15000,
       descuentoCentavos: 0,
       dientes: [{ fdi: 26, superficie: "COMPLETO" }],
     });
@@ -287,6 +295,7 @@ describe("ciclo de vida del plan", () => {
       planId: plan!.id,
       tratamientoId: resinaId,
       diagnosticoId: null,
+      precioAcordadoCentavos: 4500,
       descuentoCentavos: 0,
       dientes: [{ fdi: 15, superficie: "OCLUSAL" }],
     });
@@ -317,6 +326,7 @@ describe("ciclo de vida del plan", () => {
       planId: plan!.id,
       tratamientoId: resinaId,
       diagnosticoId: null,
+      precioAcordadoCentavos: 4500,
       descuentoCentavos: 0,
       dientes: [{ fdi: 16, superficie: "OCLUSAL" }],
     });

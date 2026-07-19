@@ -10,7 +10,7 @@ import { conTenant } from "./tenant";
 /**
  * El tablero es SOLO LECTURA y respeta los permisos del rol: una recepcionista
  * no ve cuentas por cobrar, y quien no tiene permisos clínicos tampoco ve el
- * conteo de procedimientos sin cobrar. Los campos que no corresponden llegan
+ * conteo de tratamientos sin cobrar. Los campos que no corresponden llegan
  * como null — la UI no puede mostrar lo que el repositorio no seleccionó.
  */
 export async function getDashboard(ctx: TenantContext) {
@@ -58,7 +58,7 @@ export async function getDashboard(ctx: TenantContext) {
       ingresosHoyCentavos: puedeVerCaja ? Number(kpis.ingresosHoyCentavos) : null,
       cuentasPorCobrarCentavos: puedeVerCaja ? Number(kpis.cuentasPorCobrarCentavos) : null,
       vencidoCentavos: puedeVerCaja ? Number(kpis.vencidoCentavos) : null,
-      procedimientosSinCargo: puedeVerCaja ? kpis.procedimientosSinCargo : null,
+      tratamientosSinCargo: puedeVerCaja ? kpis.tratamientosSinCargo : null,
       materialesBajoMinimo: puedeVerInventario ? kpis.materialesBajoMinimo : null,
       citas: citasDeHoy.map((cita) => ({
         id: cita.id,

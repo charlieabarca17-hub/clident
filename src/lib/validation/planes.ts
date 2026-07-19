@@ -32,6 +32,11 @@ export const AgregarPlanItemSchema = z
       .optional()
       .nullable()
       .transform((valor) => valor || null),
+    precioAcordadoCentavos: z
+      .number({ message: "El precio acordado no es un monto válido." })
+      .int("El precio acordado debe llegar en centavos enteros (ADR-009).")
+      .min(0, "El precio acordado no puede ser negativo.")
+      .max(MAX_CENTAVOS),
     descuentoCentavos: z
       .number({ message: "El descuento no es un monto válido." })
       .int("El descuento debe llegar en centavos enteros (ADR-009).")
@@ -43,6 +48,12 @@ export const AgregarPlanItemSchema = z
       .max(52),
   })
   .superRefine((datos, contexto) => {
+    if (datos.descuentoCentavos > datos.precioAcordadoCentavos) {
+      contexto.addIssue({
+        code: "custom",
+        message: "El descuento no puede superar el precio acordado.",
+      });
+    }
     const vistos = new Set<string>();
     for (const diente of datos.dientes) {
       const referencia = buscarDiente(diente.fdi);

@@ -117,6 +117,7 @@ beforeAll(async () => {
     planId,
     tratamientoId: resinaId,
     diagnosticoId: null,
+    precioAcordadoCentavos: 4500,
     descuentoCentavos: 500,
     dientes: [{ fdi: 26, superficie: "OCLUSAL" }],
   });
@@ -124,6 +125,7 @@ beforeAll(async () => {
     planId,
     tratamientoId: profilaxisId,
     diagnosticoId: null,
+    precioAcordadoCentavos: 3000,
     descuentoCentavos: 0,
     dientes: [],
   });
@@ -183,6 +185,7 @@ describe("realizar procedimiento — criterio de salida de la fase", () => {
       planId: borrador!.id,
       tratamientoId: resinaId,
       diagnosticoId: null,
+      precioAcordadoCentavos: 4500,
       descuentoCentavos: 0,
       dientes: [{ fdi: 14, superficie: "OCLUSAL" }],
     });

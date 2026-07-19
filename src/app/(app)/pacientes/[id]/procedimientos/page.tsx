@@ -66,8 +66,8 @@ export default async function ProcedimientosPage({ params, searchParams }: Proce
           <p className="mt-4 text-sm font-medium text-muted-foreground">CLIDENT · Procedimientos realizados</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">{paciente.nombres} {paciente.apellidos}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Un procedimiento es un hecho ocurrido: qué, cuándo, quién y a qué precio no se
-            reescriben. Registrarlo no genera ningún cobro — eso lo decide Caja.
+            Un procedimiento es un hecho ocurrido: qué, cuándo y quién no se reescriben.
+            Varias sesiones comparten el precio total acordado en el plan y Caja lo cobra una sola vez.
           </p>
         </header>
 
@@ -186,7 +186,9 @@ export default async function ProcedimientosPage({ params, searchParams }: Proce
                       </p>
                     ) : null}
                     <p className="mt-2 text-xs text-muted-foreground">
-                      {fechaHora(procedimiento.realizadoEn)} · {procedimiento.odontologoNombre} · {formatearUSD(procedimiento.precioAplicadoCentavos)}
+                      {fechaHora(procedimiento.realizadoEn)} · {procedimiento.odontologoNombre} · {procedimiento.precioAplicadoCentavos > 0
+                        ? `precio total acordado ${formatearUSD(procedimiento.precioAplicadoCentavos)}`
+                        : "sesión incluida en el precio total"}
                     </p>
                     {procedimiento.notasClinicas ? (
                       <p className="mt-2 whitespace-pre-wrap rounded-lg bg-muted p-3 text-sm text-foreground">{procedimiento.notasClinicas}</p>

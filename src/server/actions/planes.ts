@@ -62,11 +62,13 @@ export async function agregarPlanItemDesdeFormulario(formData: FormData): Promis
   const ctx = await requireCtx();
   requirePermiso(ctx, "clinico:write");
   const pacienteId = texto(formData, "pacienteId");
+  const precioAcordadoTexto = texto(formData, "precioAcordado");
   const descuentoTexto = texto(formData, "descuento");
   const datos = AgregarPlanItemSchema.parse({
     planId: texto(formData, "planId"),
     tratamientoId: texto(formData, "tratamientoId"),
     diagnosticoId: texto(formData, "diagnosticoId"),
+    precioAcordadoCentavos: centavosDesdeTexto(precioAcordadoTexto),
     descuentoCentavos: descuentoTexto ? centavosDesdeTexto(descuentoTexto) : 0,
     dientes: dientesDelFormulario(formData),
   });
