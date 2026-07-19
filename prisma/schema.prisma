@@ -81,6 +81,27 @@ enum TipoEventoOdontograma {
   CONDICION_ANULADA
 }
 
+// Estados del presupuesto como documento (ADR-014). ACEPTADO nunca vuelve a
+// PRESENTADO: un cambio material sobre un plan aceptado exige un plan nuevo.
+enum EstadoPlan {
+  BORRADOR
+  PRESENTADO
+  ACEPTADO
+  RECHAZADO
+  ANULADO
+}
+
+// Estados de cada tratamiento del plan (ADR-014). PROGRAMADO no existe: la
+// programación vive en Agenda. PROPUESTO ≠ PENDIENTE (eso es de Cargo).
+enum EstadoPlanItem {
+  PROPUESTO
+  ACEPTADO
+  EN_PROCESO
+  COMPLETADO
+  CANCELADO
+  ANULADO
+}
+
 // Las 16 condiciones clínicas del catálogo (referencia de producto validada).
 enum CondicionDental {
   SANO
@@ -123,6 +144,9 @@ model Clinica {
   diagnosticoDientes              DiagnosticoDiente[]
   eventosOdontograma              EventoOdontograma[]
   estadosSuperficie               EstadoSuperficie[]
+  planesTratamiento               PlanTratamiento[]
+  planItems                       PlanItem[]
+  planItemDientes                 PlanItemDiente[]
 
   @@map("clinicas")
 }
@@ -179,6 +203,9 @@ model Membresia {
   diagnosticosRegistrados      Diagnostico[]                @relation("DiagnosticoRegistradoPor")
   diagnosticosAnulados         Diagnostico[]                @relation("DiagnosticoAnuladoPor")
   eventosOdontogramaRegistrados EventoOdontograma[]         @relation("EventoOdontogramaRegistradoPor")
+  planesCreados                PlanTratamiento[]            @relation("PlanCreadoPor")
+  planesAnulados               PlanTratamiento[]            @relation("PlanAnuladoPor")
+  planItemsCreados             PlanItem[]                   @relation("PlanItemCreadoPor")
 
   @@unique([usuarioId, clinicaId])
   @@unique([clinicaId, id])
@@ -232,6 +259,7 @@ model Paciente {
   expediente Expediente?
   eventosOdontograma EventoOdontograma[]
   estadosSuperficie  EstadoSuperficie[]
+  planesTratamiento  PlanTratamiento[]
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, dui])
@@ -396,6 +424,7 @@ model Tratamiento {
 
   clinica   Clinica              @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   categoria CategoriaTratamiento @relation(fields: [clinicaId, categoriaId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  planItems PlanItem[]
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, codigo])
@@ -424,9 +453,91 @@ model SuperficieDiente {
   diagnosticoDientes DiagnosticoDiente[]
   eventosOdontograma EventoOdontograma[]
   estadosSuperficie  EstadoSuperficie[]
+  planItemDientes    PlanItemDiente[]
 
   @@id([fdi, superficie])
   @@map("superficies_diente")
+}
+
+// El presupuesto como documento (ADR-014). Aceptarlo NUNCA crea cargos ni mueve
+// dinero (ADR-007): la cuenta por cobrar nace solo en Caja, con un humano.
+model PlanTratamiento {
+  id              String     @id @default(cuid())
+  clinicaId       String     @map("clinica_id")
+  pacienteId      String     @map("paciente_id")
+  titulo          String?
+  estado          EstadoPlan @default(BORRADOR)
+  creadoPorId     String     @map("creado_por_id")
+  presentadoEn    DateTime?  @map("presentado_en") @db.Timestamptz(3)
+  aceptadoEn      DateTime?  @map("aceptado_en") @db.Timestamptz(3)
+  rechazadoEn     DateTime?  @map("rechazado_en") @db.Timestamptz(3)
+  anuladoEn       DateTime?  @map("anulado_en") @db.Timestamptz(3)
+  anuladoPorId    String?    @map("anulado_por_id")
+  motivoAnulacion String?    @map("motivo_anulacion")
+  creadoEn        DateTime   @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn   DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica    Clinica    @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  paciente   Paciente   @relation(fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  creadoPor  Membresia  @relation("PlanCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  anuladoPor Membresia? @relation("PlanAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  items      PlanItem[]
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId, pacienteId])
+  @@map("planes")
+}
+
+// Tratamiento asignado dentro de un plan. PARCIALMENTE_INMUTABLE: el precio se
+// congela al crear (ADR-006) y NADIE puede escribirlo después — clident_app solo
+// tiene UPDATE sobre (estado, actualizado_en), por privilegio de PostgreSQL.
+// El motivo de una cancelación o anulación vive en la auditoría, no acá:
+// agregar columnas de motivo exigiría hacerlas mutables, y esta tabla no muta.
+model PlanItem {
+  id                    String         @id @default(cuid())
+  clinicaId             String         @map("clinica_id")
+  planId                String         @map("plan_id")
+  tratamientoId         String         @map("tratamiento_id")
+  diagnosticoId         String?        @map("diagnostico_id")
+  tratamientoCodigo     String         @map("tratamiento_codigo")
+  tratamientoNombre     String         @map("tratamiento_nombre")
+  precioUnitarioCentavos Int           @map("precio_unitario_centavos")
+  descuentoCentavos     Int            @default(0) @map("descuento_centavos")
+  estado                EstadoPlanItem @default(PROPUESTO)
+  creadoPorId           String         @map("creado_por_id")
+  creadoEn              DateTime       @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn         DateTime       @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica     Clinica         @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  plan        PlanTratamiento @relation(fields: [clinicaId, planId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  tratamiento Tratamiento     @relation(fields: [clinicaId, tratamientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  diagnostico Diagnostico?    @relation(fields: [clinicaId, diagnosticoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  creadoPor   Membresia       @relation("PlanItemCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  dientes     PlanItemDiente[]
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId, planId])
+  @@map("plan_items")
+}
+
+// Puente editable: los dientes de un ítem en BORRADOR se editan con
+// delete+insert. El privilegio no sabe qué es un borrador — el alcance lo pone
+// la aplicación (riesgo declarado, pendiente #17 de ARQUITECTURA §19).
+model PlanItemDiente {
+  id         String     @id @default(cuid())
+  clinicaId  String     @map("clinica_id")
+  planItemId String     @map("plan_item_id")
+  fdi        Int
+  superficie Superficie
+
+  clinica  Clinica          @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  planItem PlanItem         @relation(fields: [clinicaId, planItemId], references: [clinicaId, id], onDelete: Cascade, onUpdate: Restrict)
+  cara     SuperficieDiente @relation(fields: [fdi, superficie], references: [fdi, superficie], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, planItemId, fdi, superficie])
+  @@index([clinicaId, planItemId])
+  @@map("plan_item_dientes")
 }
 
 // FUENTE DE VERDAD del odontograma: log append-only (ADR-005). clident_app
@@ -512,6 +623,7 @@ model Diagnostico {
   anuladoPor    Membresia? @relation("DiagnosticoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   dientes       DiagnosticoDiente[]
   eventosOdontograma EventoOdontograma[]
+  planItems     PlanItem[]
 
   @@unique([clinicaId, id])
   @@index([clinicaId, expedienteId])
