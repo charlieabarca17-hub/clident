@@ -17,22 +17,22 @@ export default async function PacientesPage({ searchParams }: { searchParams: Pa
   const puedeAgendar = tienePermiso(ctx.roles, "agenda:write");
 
   return (
-    <main className="min-h-full bg-neutral-50 p-5 sm:p-8">
+    <main className="min-h-full bg-background p-5 sm:p-8">
       <section className="mx-auto max-w-6xl space-y-6">
-        <header className="flex flex-col gap-4 rounded-2xl border bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <header className="flex flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-neutral-500">CLIDENT · Pacientes</p>
+            <p className="text-sm font-medium text-muted-foreground">CLIDENT · Pacientes</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">Pacientes y expedientes</h1>
-            <p className="mt-1 text-sm text-neutral-600">Buscá por nombre, teléfono, DUI o teléfono de responsable.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Buscá por nombre, teléfono, DUI o teléfono de responsable.</p>
           </div>
           {puedeCrear ? (
-            <Link href="/pacientes/nuevo" className="rounded-lg bg-neutral-900 px-4 py-2 text-center text-sm font-medium text-white">
+            <Link href="/pacientes/nuevo" className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-center text-sm font-medium text-primary-foreground">
               + Nuevo paciente
             </Link>
           ) : null}
         </header>
 
-        <form className="flex flex-col gap-2 rounded-2xl border bg-white p-4 shadow-sm sm:flex-row" method="get">
+        <form className="flex flex-col gap-2 rounded-2xl border bg-card p-4 shadow-sm sm:flex-row" method="get">
           <label htmlFor="q" className="sr-only">Buscar paciente</label>
           <input
             id="q"
@@ -47,18 +47,18 @@ export default async function PacientesPage({ searchParams }: { searchParams: Pa
           {termino ? <Link href="/pacientes" className="rounded-lg px-4 py-2 text-center text-sm">Limpiar</Link> : null}
         </form>
 
-        <section className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+        <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
           {pacientes.length === 0 ? (
             <div className="p-10 text-center">
               <h2 className="text-lg font-semibold">No encontramos pacientes</h2>
-              <p className="mt-2 text-sm text-neutral-600">
+              <p className="mt-2 text-sm text-muted-foreground">
                 {termino ? "Probá otro dato de búsqueda o registrá un paciente nuevo." : "Todavía no hay pacientes registrados para esta clínica."}
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
+                <thead className="border-b bg-muted text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-5 py-3 font-medium">Paciente</th>
                     <th className="px-5 py-3 font-medium">Teléfono</th>
@@ -69,13 +69,13 @@ export default async function PacientesPage({ searchParams }: { searchParams: Pa
                 <tbody className="divide-y">
                   {pacientes.map((paciente) => (
                     <tr key={paciente.id}>
-                      <td className="px-5 py-4 font-medium text-neutral-900">{paciente.apellidos}, {paciente.nombres}</td>
+                      <td className="px-5 py-4 font-medium text-foreground">{paciente.apellidos}, {paciente.nombres}</td>
                       <td className="px-5 py-4">{paciente.telefono}</td>
-                      <td className="px-5 py-4 font-mono text-neutral-600">{paciente.duiEnmascarado ?? "—"}</td>
+                      <td className="px-5 py-4 font-mono text-muted-foreground">{paciente.duiEnmascarado ?? "—"}</td>
                       <td className="px-5 py-4 text-right">
                         <div className="flex justify-end gap-3 whitespace-nowrap">
-                          <Link href={`/pacientes/${paciente.id}`} className="font-medium text-neutral-900 underline-offset-4 hover:underline">Expediente</Link>
-                          {puedeAgendar ? <Link href={`/agenda/nueva?pacienteId=${encodeURIComponent(paciente.id)}`} className="font-medium text-neutral-700 underline-offset-4 hover:underline">Agendar</Link> : null}
+                          <Link href={`/pacientes/${paciente.id}`} className="font-medium text-foreground underline-offset-4 hover:underline">Expediente</Link>
+                          {puedeAgendar ? <Link href={`/agenda/nueva?pacienteId=${encodeURIComponent(paciente.id)}`} className="font-medium text-foreground underline-offset-4 hover:underline">Agendar</Link> : null}
                         </div>
                       </td>
                     </tr>

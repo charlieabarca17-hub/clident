@@ -16,9 +16,9 @@ type MaterialPageProps = {
 };
 
 const ETIQUETA_TIPO: Record<string, { texto: string; clase: string }> = {
-  ENTRADA: { texto: "Entrada", clase: "bg-emerald-50 text-emerald-700" },
-  SALIDA: { texto: "Salida", clase: "bg-sky-50 text-sky-700" },
-  AJUSTE: { texto: "Ajuste", clase: "bg-amber-50 text-amber-800" },
+  ENTRADA: { texto: "Entrada", clase: "bg-exito-suave text-exito-texto" },
+  SALIDA: { texto: "Salida", clase: "bg-secondary text-secondary-foreground" },
+  AJUSTE: { texto: "Ajuste", clase: "bg-advertencia-suave text-foreground" },
 };
 
 function fechaHora(iso: string): string {
@@ -43,43 +43,43 @@ export default async function MaterialPage({ params, searchParams }: MaterialPag
   const puedeEscribir = tienePermiso(ctx.roles, "inventario:write");
 
   return (
-    <main className="min-h-full bg-neutral-50 p-5 sm:p-8">
+    <main className="min-h-full bg-background p-5 sm:p-8">
       <section className="mx-auto max-w-4xl space-y-6">
-        <header className="rounded-2xl border bg-white p-5 shadow-sm">
-          <Link href="/inventario" className="text-sm text-neutral-600 underline-offset-4 hover:underline">← Inventario</Link>
+        <header className="rounded-2xl border bg-card p-5 shadow-sm">
+          <Link href="/inventario" className="text-sm text-muted-foreground underline-offset-4 hover:underline">← Inventario</Link>
           <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-neutral-500">CLIDENT · Material</p>
+              <p className="text-sm font-medium text-muted-foreground">CLIDENT · Material</p>
               <h1 className="mt-1 text-2xl font-semibold tracking-tight">{material.nombre}</h1>
-              <p className="mt-1 text-sm text-neutral-600">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Mínimo: {material.stockMinimo} {material.unidad}
                 {material.costoUnitarioCentavos !== null ? ` · Costo unitario: ${formatearUSD(material.costoUnitarioCentavos)}` : ""}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs uppercase tracking-wide text-neutral-500">Stock actual</p>
-              <p className={`font-mono text-3xl font-semibold ${material.bajoMinimo ? "text-amber-700" : ""}`}>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Stock actual</p>
+              <p className={`font-mono text-3xl font-semibold ${material.bajoMinimo ? "text-muted-foreground" : ""}`}>
                 {material.stockActual}
               </p>
-              <p className="text-xs text-neutral-500">{material.unidad}</p>
+              <p className="text-xs text-muted-foreground">{material.unidad}</p>
             </div>
           </div>
           {material.bajoMinimo ? (
-            <p role="alert" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <p role="alert" className="mt-4 rounded-lg border border-advertencia/40 bg-advertencia-suave px-3 py-2 text-sm text-foreground">
               Este material está en o por debajo del mínimo.
             </p>
           ) : null}
         </header>
 
         {aviso === "no-disponible" ? (
-          <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p role="alert" className="rounded-lg border border-advertencia/40 bg-advertencia-suave px-3 py-2 text-sm text-foreground">
             El movimiento no se pudo registrar. Si intentabas una salida, revisá que haya stock suficiente.
           </p>
         ) : null}
 
         {puedeEscribir ? (
           <section className="grid gap-6 lg:grid-cols-2">
-            <form action={registrarMovimientoDesdeFormulario} className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
+            <form action={registrarMovimientoDesdeFormulario} className="space-y-4 rounded-2xl border bg-card p-5 shadow-sm">
               <h2 className="text-lg font-semibold">Registrar movimiento</h2>
               <input type="hidden" name="materialId" value={material.id} />
               <div className="grid grid-cols-2 gap-3">
@@ -100,12 +100,12 @@ export default async function MaterialPage({ params, searchParams }: MaterialPag
               </label>
               <label className="block text-sm font-medium">Motivo
                 <textarea name="motivo" maxLength={500} rows={2} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
-                <span className="mt-1 block text-xs font-normal text-neutral-500">Obligatorio en los ajustes: un conteo físico se explica.</span>
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">Obligatorio en los ajustes: un conteo físico se explica.</span>
               </label>
-              <button className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Registrar movimiento</button>
+              <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Registrar movimiento</button>
             </form>
 
-            <form action={actualizarMaterialDesdeFormulario} className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
+            <form action={actualizarMaterialDesdeFormulario} className="space-y-4 rounded-2xl border bg-card p-5 shadow-sm">
               <h2 className="text-lg font-semibold">Editar material</h2>
               <input type="hidden" name="materialId" value={material.id} />
               <div className="grid grid-cols-2 gap-3">
@@ -126,7 +126,7 @@ export default async function MaterialPage({ params, searchParams }: MaterialPag
                 <input type="checkbox" name="activo" defaultChecked={material.activo} />
                 Material activo
               </label>
-              <p className="rounded-lg bg-neutral-50 p-3 text-xs text-neutral-500">
+              <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">
                 El stock no se edita acá: se mueve con entradas, salidas y ajustes para que
                 siempre exista el registro de por qué cambió.
               </p>
@@ -135,16 +135,16 @@ export default async function MaterialPage({ params, searchParams }: MaterialPag
           </section>
         ) : null}
 
-        <section className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-          <h2 className="border-b bg-neutral-50 px-5 py-3 text-sm font-semibold uppercase tracking-wide text-neutral-600">
+        <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <h2 className="border-b bg-muted px-5 py-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Historial de movimientos
           </h2>
           {material.movimientos.length === 0 ? (
-            <p className="p-8 text-center text-sm text-neutral-600">Sin movimientos registrados.</p>
+            <p className="p-8 text-center text-sm text-muted-foreground">Sin movimientos registrados.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b text-xs uppercase tracking-wide text-neutral-500">
+                <thead className="border-b text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-5 py-3 font-medium">Fecha</th>
                     <th className="px-5 py-3 font-medium">Tipo</th>
@@ -161,12 +161,12 @@ export default async function MaterialPage({ params, searchParams }: MaterialPag
                       <tr key={movimiento.id}>
                         <td className="whitespace-nowrap px-5 py-3">{fechaHora(movimiento.creadoEn)}</td>
                         <td className="px-5 py-3"><span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${etiqueta.clase}`}>{etiqueta.texto}</span></td>
-                        <td className={`px-5 py-3 text-right font-mono ${movimiento.cantidad < 0 ? "text-neutral-700" : "text-emerald-700"}`}>
+                        <td className={`px-5 py-3 text-right font-mono ${movimiento.cantidad < 0 ? "text-foreground" : "text-exito-texto"}`}>
                           {movimiento.cantidad > 0 ? "+" : ""}{movimiento.cantidad}
                         </td>
                         <td className="px-5 py-3 text-right font-mono font-medium">{movimiento.saldoDespues}</td>
-                        <td className="max-w-64 px-5 py-3 text-neutral-600">{movimiento.motivo ?? "—"}</td>
-                        <td className="px-5 py-3 text-neutral-600">{movimiento.registradoPorNombre}</td>
+                        <td className="max-w-64 px-5 py-3 text-muted-foreground">{movimiento.motivo ?? "—"}</td>
+                        <td className="px-5 py-3 text-muted-foreground">{movimiento.registradoPorNombre}</td>
                       </tr>
                     );
                   })}

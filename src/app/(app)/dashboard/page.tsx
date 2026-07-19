@@ -37,18 +37,18 @@ function Kpi({
   alerta?: boolean;
 }) {
   const clase = destacado
-    ? "border-neutral-900 bg-neutral-900 text-white"
+    ? "border-ciruela bg-ciruela text-white"
     : alerta
-      ? "border-amber-300 bg-amber-50"
-      : "bg-white";
+      ? "border-advertencia/40 bg-advertencia-suave"
+      : "bg-card";
   return (
     <div className={`rounded-2xl border p-5 shadow-sm ${clase}`}>
-      <p className={`text-xs uppercase tracking-wide ${destacado ? "text-neutral-300" : "text-neutral-500"}`}>
+      <p className={`text-xs uppercase tracking-wide ${destacado ? "text-white/70" : "text-muted-foreground"}`}>
         {etiqueta}
       </p>
       <p className="mt-1.5 font-mono text-2xl font-semibold">{valor}</p>
       {nota ? (
-        <p className={`mt-1 text-xs ${destacado ? "text-neutral-400" : "text-neutral-500"}`}>{nota}</p>
+        <p className={`mt-1 text-xs ${destacado ? "text-muted-foreground/70" : "text-muted-foreground"}`}>{nota}</p>
       ) : null}
     </div>
   );
@@ -59,10 +59,10 @@ export default async function DashboardPage() {
   const tablero = await getDashboard(ctx);
 
   return (
-    <main className="min-h-full bg-neutral-50 p-5 sm:p-8">
+    <main className="min-h-full bg-background p-5 sm:p-8">
       <section className="mx-auto max-w-6xl space-y-6">
-        <header className="rounded-2xl border bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-neutral-500">CLIDENT · Tablero</p>
+        <header className="rounded-2xl border bg-card p-5 shadow-sm">
+          <p className="text-sm font-medium text-muted-foreground">CLIDENT · Tablero</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight capitalize">
             {fechaLarga(tablero.hoy)}
           </h1>
@@ -111,8 +111,8 @@ export default async function DashboardPage() {
               <Kpi etiqueta="En mora" valor={formatearUSD(tablero.vencidoCentavos!)} nota="Vencido y aún impago" alerta />
             ) : null}
             {(tablero.procedimientosSinCargo ?? 0) > 0 ? (
-              <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
-                <p className="text-xs uppercase tracking-wide text-neutral-500">Pendientes de cobro</p>
+              <div className="rounded-2xl border border-advertencia/40 bg-advertencia-suave p-5 shadow-sm">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Pendientes de cobro</p>
                 <p className="mt-1.5 font-mono text-2xl font-semibold">{tablero.procedimientosSinCargo}</p>
                 <Link href="/caja" className="mt-1 inline-block text-xs font-medium underline-offset-4 hover:underline">
                   Procedimientos realizados sin cargo →
@@ -120,8 +120,8 @@ export default async function DashboardPage() {
               </div>
             ) : null}
             {(tablero.materialesBajoMinimo ?? 0) > 0 ? (
-              <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
-                <p className="text-xs uppercase tracking-wide text-neutral-500">Stock bajo</p>
+              <div className="rounded-2xl border border-advertencia/40 bg-advertencia-suave p-5 shadow-sm">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Stock bajo</p>
                 <p className="mt-1.5 font-mono text-2xl font-semibold">{tablero.materialesBajoMinimo}</p>
                 <Link href="/inventario" className="mt-1 inline-block text-xs font-medium underline-offset-4 hover:underline">
                   Materiales en o bajo el mínimo →
@@ -131,18 +131,18 @@ export default async function DashboardPage() {
           </section>
         ) : null}
 
-        <section className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-          <h2 className="border-b bg-neutral-50 px-5 py-3 text-sm font-semibold uppercase tracking-wide text-neutral-600">
+        <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <h2 className="border-b bg-muted px-5 py-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Agenda de hoy
           </h2>
           {tablero.citas.length === 0 ? (
-            <p className="p-8 text-center text-sm text-neutral-600">No hay citas agendadas para hoy.</p>
+            <p className="p-8 text-center text-sm text-muted-foreground">No hay citas agendadas para hoy.</p>
           ) : (
             <ul className="divide-y text-sm">
               {tablero.citas.map((cita) => (
                 <li
                   key={cita.id}
-                  className={`flex flex-wrap items-center justify-between gap-3 px-5 py-3 ${cita.estado === "CANCELADA" ? "text-neutral-400" : ""}`}
+                  className={`flex flex-wrap items-center justify-between gap-3 px-5 py-3 ${cita.estado === "CANCELADA" ? "text-muted-foreground/70" : ""}`}
                 >
                   <div className="flex min-w-0 items-center gap-4">
                     <span className="font-mono font-medium">{hora(cita.inicioEn)}–{hora(cita.finEn)}</span>
@@ -150,15 +150,15 @@ export default async function DashboardPage() {
                       <Link href={`/pacientes/${cita.paciente.id}`} className={`font-medium underline-offset-4 hover:underline ${cita.estado === "CANCELADA" ? "line-through" : ""}`}>
                         {cita.paciente.nombre}
                       </Link>
-                      {cita.motivo ? <p className="truncate text-xs text-neutral-500">{cita.motivo}</p> : null}
+                      {cita.motivo ? <p className="truncate text-xs text-muted-foreground">{cita.motivo}</p> : null}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 text-xs">
-                    <span className="text-neutral-600">{cita.odontologoNombre}</span>
+                    <span className="text-muted-foreground">{cita.odontologoNombre}</span>
                     {cita.estado === "CANCELADA" ? (
-                      <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-medium">Cancelada</span>
+                      <span className="rounded-full bg-muted px-2 py-0.5 font-medium">Cancelada</span>
                     ) : null}
-                    <Link href={`/pacientes/${cita.paciente.id}/historial`} className="font-medium text-neutral-900 underline-offset-4 hover:underline">
+                    <Link href={`/pacientes/${cita.paciente.id}/historial`} className="font-medium text-foreground underline-offset-4 hover:underline">
                       Historial
                     </Link>
                   </div>

@@ -19,20 +19,20 @@ export default async function EditarTratamientoPage({ params }: { params: Editar
   const actualizar = actualizarTratamientoDesdeFormulario.bind(null, tratamiento.id);
 
   return (
-    <main className="min-h-full bg-neutral-50 p-5 sm:p-8">
+    <main className="min-h-full bg-background p-5 sm:p-8">
       <section className="mx-auto max-w-3xl space-y-6">
-        <header className="rounded-2xl border bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-neutral-500">CLIDENT · Catálogo</p>
+        <header className="rounded-2xl border bg-card p-5 shadow-sm">
+          <p className="text-sm font-medium text-muted-foreground">CLIDENT · Catálogo</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            <span className="font-mono text-neutral-500">{tratamiento.codigo}</span> · {tratamiento.nombre}
+            <span className="font-mono text-muted-foreground">{tratamiento.codigo}</span> · {tratamiento.nombre}
           </h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-muted-foreground">
             Cambiar el precio de lista solo afecta asignaciones futuras: los planes ya creados
             conservan el precio con el que se ofrecieron.
           </p>
         </header>
 
-        <form action={actualizar} className="space-y-5 rounded-2xl border bg-white p-5 shadow-sm">
+        <form action={actualizar} className="space-y-5 rounded-2xl border bg-card p-5 shadow-sm">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium sm:col-span-2">Nombre *
               <input name="nombre" required maxLength={120} defaultValue={tratamiento.nombre} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
@@ -46,7 +46,7 @@ export default async function EditarTratamientoPage({ params }: { params: Editar
             </label>
           </div>
 
-          <p className="rounded-lg bg-neutral-50 p-3 text-xs text-neutral-500">
+          <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">
             El código y las banderas de comportamiento no se editan: definen qué es este
             tratamiento. Si necesitás un comportamiento distinto, creá un tratamiento nuevo
             y desactivá este. Desactivarlo solo lo quita del selector — nunca toca planes,
@@ -55,7 +55,7 @@ export default async function EditarTratamientoPage({ params }: { params: Editar
 
           <div className="flex items-center justify-end gap-3">
             <Link href="/catalogo" className="rounded-lg px-4 py-2 text-sm">Cancelar</Link>
-            <button className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Guardar cambios</button>
+            <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Guardar cambios</button>
           </div>
         </form>
       </section>
