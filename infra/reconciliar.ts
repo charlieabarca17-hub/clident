@@ -39,6 +39,14 @@ export const CONSULTAS_RECONCILIACION: readonly Consulta[] = [
           HAVING c.monto_centavos <> COALESCE(SUM(l.monto_centavos), 0)`,
   },
   {
+    nombre: "#3 stock de materiales vs Σ movimientos",
+    sql: `SELECT m.id, m.stock_actual, COALESCE(SUM(mv.cantidad), 0) AS suma_real
+          FROM materiales m
+          LEFT JOIN movimientos_inventario mv ON mv.material_id = m.id
+          GROUP BY m.id, m.stock_actual
+          HAVING m.stock_actual <> COALESCE(SUM(mv.cantidad), 0)`,
+  },
+  {
     nombre: "#5 resurrecciones (ADR-016 #12): anulado en auditoría pero vivo",
     sql: `SELECT au.entidad_id, au.accion
           FROM auditoria au
@@ -50,7 +58,6 @@ export const CONSULTAS_RECONCILIACION: readonly Consulta[] = [
           WHERE au.accion = 'PAGO_ANULADO'
             AND EXISTS (SELECT 1 FROM pagos p WHERE p.id = au.entidad_id AND p.anulado_en IS NULL)`,
   },
-  // La #3 (stock de materiales) entra con la Fase 10.
 ];
 
 export async function reconciliar(connectionString: string): Promise<

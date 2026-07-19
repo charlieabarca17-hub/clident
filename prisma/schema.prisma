@@ -126,6 +126,14 @@ enum MetodoPago {
   OTRO
 }
 
+// Un movimiento suma o resta stock. AJUSTE cubre el conteo físico que corrige
+// una diferencia: no se edita el stock, se registra por qué cambió.
+enum TipoMovimientoInventario {
+  ENTRADA
+  SALIDA
+  AJUSTE
+}
+
 // Las 16 condiciones clínicas del catálogo (referencia de producto validada).
 enum CondicionDental {
   SANO
@@ -179,6 +187,8 @@ model Clinica {
   pagos                           Pago[]
   aplicacionesPago                AplicacionPago[]
   documentosFiscales              DocumentoFiscal[]
+  materiales                      Material[]
+  movimientosInventario           MovimientoInventario[]
 
   @@map("clinicas")
 }
@@ -195,6 +205,7 @@ model Sucursal {
   procedimientos Procedimiento[] @relation("ProcedimientoSucursal")
   cargos  Cargo[] @relation("CargoSucursal")
   pagos   Pago[]  @relation("PagoSucursal")
+  materiales Material[] @relation("MaterialSucursal")
 
   @@unique([clinicaId, id])
   @@index([clinicaId])
@@ -250,6 +261,7 @@ model Membresia {
   pagosCreados                 Pago[]                       @relation("PagoCreadoPor")
   pagosAnulados                Pago[]                       @relation("PagoAnuladoPor")
   aplicacionesCreadas          AplicacionPago[]             @relation("AplicacionCreadaPor")
+  movimientosInventario        MovimientoInventario[]       @relation("MovimientoRegistradoPor")
 
   @@unique([usuarioId, clinicaId])
   @@unique([clinicaId, id])
@@ -698,6 +710,54 @@ model AplicacionPago {
   @@index([clinicaId, pagoId])
   @@index([clinicaId, cargoId])
   @@map("aplicaciones_pago")
+}
+
+// Material de la sucursal. stock_actual es un contador materializado con CHECK
+// >= 0 (§13.1): el stock negativo es imposible, no verificado. NO se descuenta
+// automáticamente al realizar procedimientos — decisión futura (REGLAS §8).
+model Material {
+  id                   String   @id @default(cuid())
+  clinicaId            String   @map("clinica_id")
+  sucursalId           String   @map("sucursal_id")
+  nombre               String
+  unidad               String
+  stockActual          Int      @map("stock_actual")
+  stockMinimo          Int      @map("stock_minimo")
+  costoUnitarioCentavos Int?    @map("costo_unitario_centavos")
+  activo               Boolean  @default(true)
+  creadoEn             DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn        DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica     Clinica  @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sucursal    Sucursal @relation("MaterialSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  movimientos MovimientoInventario[]
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, sucursalId, nombre])
+  @@index([clinicaId, sucursalId])
+  @@map("materiales")
+}
+
+// APPEND_ONLY: el historial de stock no se borra ni se edita. saldoDespues sale
+// del RETURNING del UPDATE atómico, nunca se calcula en código (§13.3).
+model MovimientoInventario {
+  id              String                   @id @default(cuid())
+  clinicaId       String                   @map("clinica_id")
+  materialId      String                   @map("material_id")
+  tipo            TipoMovimientoInventario
+  cantidad        Int
+  saldoDespues    Int                      @map("saldo_despues")
+  motivo          String?
+  registradoPorId String                   @map("registrado_por_id")
+  creadoEn        DateTime                 @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  clinica       Clinica   @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  material      Material  @relation(fields: [clinicaId, materialId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  registradoPor Membresia @relation("MovimientoRegistradoPor", fields: [clinicaId, registradoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId, materialId])
+  @@map("movimientos_inventario")
 }
 
 // Seam DTE (§12.7): tabla vacía que fija la relación. APPEND_ONLY desde el
