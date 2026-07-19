@@ -109,6 +109,23 @@ enum EstadoProcedimiento {
   ANULADO
 }
 
+// PENDIENTE aquí significa deuda sin pagar (no confundir con PROPUESTO de
+// PlanItem, ADR-014). El CHECK de coherencia amarra estado y contador (§13.2).
+enum EstadoCargo {
+  PENDIENTE
+  PARCIAL
+  PAGADO
+  ANULADO
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TARJETA
+  TRANSFERENCIA
+  CHEQUE
+  OTRO
+}
+
 // Las 16 condiciones clínicas del catálogo (referencia de producto validada).
 enum CondicionDental {
   SANO
@@ -157,6 +174,11 @@ model Clinica {
   procedimientos                  Procedimiento[]
   procedimientoDientes            ProcedimientoDiente[]
   enmiendasProcedimiento          EnmiendaProcedimiento[]
+  cargos                          Cargo[]
+  lineasCargo                     LineaCargo[]
+  pagos                           Pago[]
+  aplicacionesPago                AplicacionPago[]
+  documentosFiscales              DocumentoFiscal[]
 
   @@map("clinicas")
 }
@@ -171,6 +193,8 @@ model Sucursal {
   clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   citas   Cita[]  @relation("CitaSucursal")
   procedimientos Procedimiento[] @relation("ProcedimientoSucursal")
+  cargos  Cargo[] @relation("CargoSucursal")
+  pagos   Pago[]  @relation("PagoSucursal")
 
   @@unique([clinicaId, id])
   @@index([clinicaId])
@@ -221,6 +245,11 @@ model Membresia {
   procedimientosCreados        Procedimiento[]              @relation("ProcedimientoCreadoPor")
   procedimientosAnulados       Procedimiento[]              @relation("ProcedimientoAnuladoPor")
   enmiendasCreadas             EnmiendaProcedimiento[]      @relation("EnmiendaCreadaPor")
+  cargosCreados                Cargo[]                      @relation("CargoCreadoPor")
+  cargosAnulados               Cargo[]                      @relation("CargoAnuladoPor")
+  pagosCreados                 Pago[]                       @relation("PagoCreadoPor")
+  pagosAnulados                Pago[]                       @relation("PagoAnuladoPor")
+  aplicacionesCreadas          AplicacionPago[]             @relation("AplicacionCreadaPor")
 
   @@unique([usuarioId, clinicaId])
   @@unique([clinicaId, id])
@@ -276,6 +305,8 @@ model Paciente {
   estadosSuperficie  EstadoSuperficie[]
   planesTratamiento  PlanTratamiento[]
   procedimientos     Procedimiento[]    @relation("ProcedimientoPaciente")
+  cargos             Cargo[]            @relation("CargoPaciente")
+  pagos              Pago[]             @relation("PagoPaciente")
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, dui])
@@ -512,10 +543,17 @@ model Procedimiento {
   dientes     ProcedimientoDiente[]
   enmiendas   EnmiendaProcedimiento[]
   eventosOdontograma EventoOdontograma[] @relation("EventoProcedimiento")
+  // ADR-016 (#15): el puntero al cargo que lo cobró. Mutable por columna:
+  // cobrar lo reclama atómicamente; anular el cargo lo libera. Un solo slot
+  // hace el doble cobro estructuralmente imposible.
+  cargoId     String?     @map("cargo_id")
+  cargo       Cargo?      @relation("ProcedimientoCobradoEn", fields: [clinicaId, cargoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  lineasCargo LineaCargo[] @relation("LineaProcedimiento")
 
   @@unique([clinicaId, id])
   @@index([clinicaId, pacienteId])
   @@index([clinicaId, planItemId])
+  @@index([clinicaId, cargoId])
   @@map("procedimientos")
 }
 
@@ -536,6 +574,144 @@ model ProcedimientoDiente {
   @@unique([clinicaId, procedimientoId, fdi, superficie])
   @@index([clinicaId, procedimientoId])
   @@map("procedimiento_dientes")
+}
+
+// ÚNICO origen de la cuenta por cobrar (ADR-007): un Cargo existe porque un
+// humano con caja:write lo creó. PARCIALMENTE_INMUTABLE: monto, paciente y
+// fecha exigible no se reescriben; un monto equivocado se anula y se recrea.
+model Cargo {
+  id                    String     @id @default(cuid())
+  clinicaId             String     @map("clinica_id")
+  pacienteId            String     @map("paciente_id")
+  sucursalId            String     @map("sucursal_id")
+  descripcion           String
+  montoCentavos         Int        @map("monto_centavos")
+  montoAplicadoCentavos Int        @default(0) @map("monto_aplicado_centavos")
+  estado                EstadoCargo @default(PENDIENTE)
+  // date, no timestamptz: una cuota vence un día civil (ADR-013). Sin default:
+  // quien crea el cargo dice cuándo vence, o el INSERT truena con 23502.
+  fechaExigibleEn       DateTime   @map("fecha_exigible_en") @db.Date
+  // ADR-016 (#16): las cuotas se cuelgan del tratamiento del plan.
+  planItemId            String?    @map("plan_item_id")
+  cuotaNumero           Int?       @map("cuota_numero")
+  documentoFiscalId     String?    @map("documento_fiscal_id")
+  anuladoEn             DateTime?  @map("anulado_en") @db.Timestamptz(3)
+  anuladoPorId          String?    @map("anulado_por_id")
+  motivoAnulacion       String?    @map("motivo_anulacion")
+  creadoEn              DateTime   @default(now()) @map("creado_en") @db.Timestamptz(3)
+  creadoPorId           String     @map("creado_por_id")
+  actualizadoEn         DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica         Clinica          @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  paciente        Paciente         @relation("CargoPaciente", fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  sucursal        Sucursal         @relation("CargoSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  planItem        PlanItem?        @relation("CargoPlanItem", fields: [clinicaId, planItemId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  documentoFiscal DocumentoFiscal? @relation(fields: [clinicaId, documentoFiscalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  creadoPor       Membresia        @relation("CargoCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  anuladoPor      Membresia?       @relation("CargoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  lineas          LineaCargo[]
+  aplicaciones    AplicacionPago[] @relation("AplicacionCargo")
+  procedimientosCobrados Procedimiento[] @relation("ProcedimientoCobradoEn")
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, planItemId, cuotaNumero])
+  @@index([clinicaId, pacienteId])
+  @@index([clinicaId, fechaExigibleEn])
+  @@map("cargos")
+}
+
+// APPEND_ONLY: dinero descompuesto. Editarlas desalinearía Σ(líneas) contra el
+// monto del cargo (reconciliación #4). El descuento de mostrador vive acá (ADR-016).
+model LineaCargo {
+  id                     String  @id @default(cuid())
+  clinicaId              String  @map("clinica_id")
+  cargoId                String  @map("cargo_id")
+  procedimientoId        String? @map("procedimiento_id")
+  descripcion            String
+  precioOriginalCentavos Int     @map("precio_original_centavos")
+  descuentoCentavos      Int     @default(0) @map("descuento_centavos")
+  montoCentavos          Int     @map("monto_centavos")
+  creadoEn               DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  clinica       Clinica        @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  cargo         Cargo          @relation(fields: [clinicaId, cargoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  procedimiento Procedimiento? @relation("LineaProcedimiento", fields: [clinicaId, procedimientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId, cargoId])
+  @@index([clinicaId, procedimientoId])
+  @@map("lineas_cargo")
+}
+
+// PARCIALMENTE_INMUTABLE. Cuelga del Paciente, no del Cargo: un anticipo es un
+// pago sin aplicaciones. SIN columna estado — se deriva del contador (§12.5).
+model Pago {
+  id                    String     @id @default(cuid())
+  clinicaId             String     @map("clinica_id")
+  pacienteId            String     @map("paciente_id")
+  sucursalId            String     @map("sucursal_id")
+  montoCentavos         Int        @map("monto_centavos")
+  montoAplicadoCentavos Int        @default(0) @map("monto_aplicado_centavos")
+  metodo                MetodoPago
+  referencia            String?
+  anuladoEn             DateTime?  @map("anulado_en") @db.Timestamptz(3)
+  anuladoPorId          String?    @map("anulado_por_id")
+  motivoAnulacion       String?    @map("motivo_anulacion")
+  creadoEn              DateTime   @default(now()) @map("creado_en") @db.Timestamptz(3)
+  creadoPorId           String     @map("creado_por_id")
+  actualizadoEn         DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica      Clinica          @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  paciente     Paciente         @relation("PagoPaciente", fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  sucursal     Sucursal         @relation("PagoSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  creadoPor    Membresia        @relation("PagoCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  anuladoPor   Membresia?       @relation("PagoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  aplicaciones AplicacionPago[] @relation("AplicacionPago")
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId, pacienteId])
+  @@map("pagos")
+}
+
+// APPEND_ONLY: cada fila mueve LOS DOS contadores en la misma transacción
+// (§13.1). Las reversas son filas negativas por el monto completo, amarradas a
+// su original por la FK quíntuple de §12.4 — deshacer a medias no existe.
+model AplicacionPago {
+  id                    String   @id @default(cuid())
+  clinicaId             String   @map("clinica_id")
+  pagoId                String   @map("pago_id")
+  cargoId               String   @map("cargo_id")
+  montoCentavos         Int      @map("monto_centavos")
+  reversaDeAplicacionId String?  @map("reversa_de_aplicacion_id")
+  motivoReversa         String?  @map("motivo_reversa")
+  // Columna generada (-monto) en SQL manual: el destino de la FK de reversa.
+  montoNegadoCentavos   Int      @default(dbgenerated()) @map("monto_negado_centavos")
+  creadoEn              DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  creadaPorId           String   @map("creada_por_id")
+
+  clinica   Clinica   @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  pago      Pago      @relation("AplicacionPago", fields: [clinicaId, pagoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  cargo     Cargo     @relation("AplicacionCargo", fields: [clinicaId, cargoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  creadaPor Membresia @relation("AplicacionCreadaPor", fields: [clinicaId, creadaPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId, pagoId])
+  @@index([clinicaId, cargoId])
+  @@map("aplicaciones_pago")
+}
+
+// Seam DTE (§12.7): tabla vacía que fija la relación. APPEND_ONLY desde el
+// nacimiento — es un snapshot tributario futuro, no un borrador editable.
+model DocumentoFiscal {
+  id        String   @id @default(cuid())
+  clinicaId String   @map("clinica_id")
+  creadoEn  DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  cargos  Cargo[]
+
+  @@unique([clinicaId, id])
+  @@map("documentos_fiscales")
 }
 
 // APPEND_ONLY: la enmienda existe PARA preservar el texto anterior. Con UPDATE
@@ -615,6 +791,7 @@ model PlanItem {
   creadoPor   Membresia       @relation("PlanItemCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   dientes     PlanItemDiente[]
   procedimientos Procedimiento[] @relation("ProcedimientoPlanItem")
+  cargos      Cargo[]          @relation("CargoPlanItem")
 
   @@unique([clinicaId, id])
   @@index([clinicaId, planId])
