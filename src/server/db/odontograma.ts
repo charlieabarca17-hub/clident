@@ -74,7 +74,8 @@ async function eventosDeSuperficie(
  * el estado correcto sale del último evento no anulado anterior, que el evento
  * de anulación no conoce (ARQUITECTURA §10.1).
  */
-async function recalcularSuperficie(
+/** Exportada para que la anulación de procedimientos (Fase 8) use EL MISMO camino. */
+export async function recalcularSuperficie(
   tx: TenantTransaction,
   ctx: TenantContext,
   pacienteId: string,

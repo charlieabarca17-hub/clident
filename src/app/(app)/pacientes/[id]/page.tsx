@@ -86,7 +86,7 @@ export default async function PacienteExpedientePage({ params, searchParams }: P
             {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/diagnosticos`} className="rounded-full border px-3 py-1.5 font-medium">Diagnósticos</Link> : null}
             {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/odontograma`} className="rounded-full border px-3 py-1.5 font-medium">Odontograma</Link> : null}
             {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/planes`} className="rounded-full border px-3 py-1.5 font-medium">Planes</Link> : null}
-            <span className="rounded-full border border-dashed px-3 py-1.5 text-neutral-500">Historial clínico · Próximamente</span>
+            {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/procedimientos`} className="rounded-full border px-3 py-1.5 font-medium">Procedimientos</Link> : null}
             <span className="rounded-full border border-dashed px-3 py-1.5 text-neutral-500">Caja · Próximamente</span>
           </nav>
         </header>

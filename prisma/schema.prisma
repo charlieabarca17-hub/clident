@@ -102,6 +102,13 @@ enum EstadoPlanItem {
   ANULADO
 }
 
+// Un procedimiento es un hecho ocurrido: REALIZADO, o ANULADO si nunca debió
+// registrarse. No hay más estados — lo demás es historia del plan o de Caja.
+enum EstadoProcedimiento {
+  REALIZADO
+  ANULADO
+}
+
 // Las 16 condiciones clínicas del catálogo (referencia de producto validada).
 enum CondicionDental {
   SANO
@@ -147,6 +154,9 @@ model Clinica {
   planesTratamiento               PlanTratamiento[]
   planItems                       PlanItem[]
   planItemDientes                 PlanItemDiente[]
+  procedimientos                  Procedimiento[]
+  procedimientoDientes            ProcedimientoDiente[]
+  enmiendasProcedimiento          EnmiendaProcedimiento[]
 
   @@map("clinicas")
 }
@@ -160,6 +170,7 @@ model Sucursal {
 
   clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   citas   Cita[]  @relation("CitaSucursal")
+  procedimientos Procedimiento[] @relation("ProcedimientoSucursal")
 
   @@unique([clinicaId, id])
   @@index([clinicaId])
@@ -206,6 +217,10 @@ model Membresia {
   planesCreados                PlanTratamiento[]            @relation("PlanCreadoPor")
   planesAnulados               PlanTratamiento[]            @relation("PlanAnuladoPor")
   planItemsCreados             PlanItem[]                   @relation("PlanItemCreadoPor")
+  procedimientosComoOdontologo Procedimiento[]              @relation("ProcedimientoOdontologo")
+  procedimientosCreados        Procedimiento[]              @relation("ProcedimientoCreadoPor")
+  procedimientosAnulados       Procedimiento[]              @relation("ProcedimientoAnuladoPor")
+  enmiendasCreadas             EnmiendaProcedimiento[]      @relation("EnmiendaCreadaPor")
 
   @@unique([usuarioId, clinicaId])
   @@unique([clinicaId, id])
@@ -260,6 +275,7 @@ model Paciente {
   eventosOdontograma EventoOdontograma[]
   estadosSuperficie  EstadoSuperficie[]
   planesTratamiento  PlanTratamiento[]
+  procedimientos     Procedimiento[]    @relation("ProcedimientoPaciente")
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, dui])
@@ -425,6 +441,7 @@ model Tratamiento {
   clinica   Clinica              @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   categoria CategoriaTratamiento @relation(fields: [clinicaId, categoriaId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   planItems PlanItem[]
+  procedimientos Procedimiento[] @relation("ProcedimientoTratamiento")
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, codigo])
@@ -454,9 +471,92 @@ model SuperficieDiente {
   eventosOdontograma EventoOdontograma[]
   estadosSuperficie  EstadoSuperficie[]
   planItemDientes    PlanItemDiente[]
+  procedimientoDientes ProcedimientoDiente[]
 
   @@id([fdi, superficie])
   @@map("superficies_diente")
+}
+
+// El hecho clínico ocurrido (§10.5). PARCIALMENTE_INMUTABLE: qué se hizo, a
+// quién, cuándo, por quién y a qué precio NO se puede reescribir — solo el
+// estado, la nota (12 h) y los campos de anulación son mutables, por privilegio.
+model Procedimiento {
+  id                     String              @id @default(cuid())
+  clinicaId              String              @map("clinica_id")
+  sucursalId             String              @map("sucursal_id")
+  pacienteId             String              @map("paciente_id")
+  planItemId             String              @map("plan_item_id")
+  odontologoId           String              @map("odontologo_id")
+  tratamientoId          String              @map("tratamiento_id")
+  tratamientoCodigo      String              @map("tratamiento_codigo")
+  tratamientoNombre      String              @map("tratamiento_nombre")
+  realizadoEn            DateTime            @map("realizado_en") @db.Timestamptz(3)
+  precioAplicadoCentavos Int                 @map("precio_aplicado_centavos")
+  estado                 EstadoProcedimiento @default(REALIZADO)
+  notasClinicas          String?             @map("notas_clinicas")
+  anuladoEn              DateTime?           @map("anulado_en") @db.Timestamptz(3)
+  anuladoPorId           String?             @map("anulado_por_id")
+  motivoAnulacion        String?             @map("motivo_anulacion")
+  creadoEn               DateTime            @default(now()) @map("creado_en") @db.Timestamptz(3)
+  creadoPorId            String              @map("creado_por_id")
+  actualizadoEn          DateTime            @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica     Clinica     @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sucursal    Sucursal    @relation("ProcedimientoSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  paciente    Paciente    @relation("ProcedimientoPaciente", fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  planItem    PlanItem    @relation("ProcedimientoPlanItem", fields: [clinicaId, planItemId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  odontologo  Membresia   @relation("ProcedimientoOdontologo", fields: [clinicaId, odontologoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  tratamiento Tratamiento @relation("ProcedimientoTratamiento", fields: [clinicaId, tratamientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  creadoPor   Membresia   @relation("ProcedimientoCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  anuladoPor  Membresia?  @relation("ProcedimientoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  dientes     ProcedimientoDiente[]
+  enmiendas   EnmiendaProcedimiento[]
+  eventosOdontograma EventoOdontograma[] @relation("EventoProcedimiento")
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId, pacienteId])
+  @@index([clinicaId, planItemId])
+  @@map("procedimientos")
+}
+
+// APPEND_ONLY: los dientes de un procedimiento son un hecho. Con DELETE se
+// podría cambiar qué dientes cubrió; por eso ni la app puede tocarlos (§9).
+model ProcedimientoDiente {
+  id              String     @id @default(cuid())
+  clinicaId       String     @map("clinica_id")
+  procedimientoId String     @map("procedimiento_id")
+  fdi             Int
+  superficie      Superficie
+
+  clinica       Clinica          @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  procedimiento Procedimiento    @relation(fields: [clinicaId, procedimientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  cara          SuperficieDiente @relation(fields: [fdi, superficie], references: [fdi, superficie], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, procedimientoId, fdi, superficie])
+  @@index([clinicaId, procedimientoId])
+  @@map("procedimiento_dientes")
+}
+
+// APPEND_ONLY: la enmienda existe PARA preservar el texto anterior. Con UPDATE
+// la preservación sería ficción; por eso la base rechaza editarla o borrarla.
+model EnmiendaProcedimiento {
+  id              String   @id @default(cuid())
+  clinicaId       String   @map("clinica_id")
+  procedimientoId String   @map("procedimiento_id")
+  textoAnterior   String?  @map("texto_anterior")
+  textoNuevo      String   @map("texto_nuevo")
+  motivo          String
+  creadaPorId     String   @map("creada_por_id")
+  creadoEn        DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  clinica       Clinica       @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  procedimiento Procedimiento @relation(fields: [clinicaId, procedimientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  creadaPor     Membresia     @relation("EnmiendaCreadaPor", fields: [clinicaId, creadaPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId, procedimientoId])
+  @@map("enmiendas_procedimiento")
 }
 
 // El presupuesto como documento (ADR-014). Aceptarlo NUNCA crea cargos ni mueve
@@ -514,6 +614,7 @@ model PlanItem {
   diagnostico Diagnostico?    @relation(fields: [clinicaId, diagnosticoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   creadoPor   Membresia       @relation("PlanItemCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   dientes     PlanItemDiente[]
+  procedimientos Procedimiento[] @relation("ProcedimientoPlanItem")
 
   @@unique([clinicaId, id])
   @@index([clinicaId, planId])
@@ -555,6 +656,7 @@ model EventoOdontograma {
   creadoEn        DateTime              @default(now()) @map("creado_en") @db.Timestamptz(3)
   registradoPorId String                @map("registrado_por_id")
   diagnosticoId   String?               @map("diagnostico_id")
+  procedimientoId String?               @map("procedimiento_id")
   anulaEventoId   String?               @map("anula_evento_id")
   motivoAnulacion String?               @map("motivo_anulacion")
 
@@ -563,6 +665,7 @@ model EventoOdontograma {
   cara          SuperficieDiente   @relation(fields: [fdi, superficie], references: [fdi, superficie], onDelete: Restrict, onUpdate: Restrict)
   registradoPor Membresia          @relation("EventoOdontogramaRegistradoPor", fields: [clinicaId, registradoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   diagnostico   Diagnostico?       @relation(fields: [clinicaId, diagnosticoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  procedimiento Procedimiento?     @relation("EventoProcedimiento", fields: [clinicaId, procedimientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   anulaEvento   EventoOdontograma? @relation("EventoAnulacion", fields: [clinicaId, anulaEventoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   anuladoPorEvento EventoOdontograma? @relation("EventoAnulacion")
   estadosProyectados EstadoSuperficie[] @relation("EstadoUltimoEvento")
