@@ -76,6 +76,20 @@ Al entrar por esa ruta, la persona define su contraseña y ya puede iniciar
 sesión. **La clínica nace sin catálogo:** el primer administrador entra a
 Catálogo y aprieta "Copiar catálogo inicial".
 
+### 1.5 Recuperar la contraseña de un usuario existente
+
+Si un usuario perdió su contraseña, desde la carpeta del proyecto ejecutá:
+
+```powershell
+npm run restablecer-contrasena -- correo@ejemplo.com
+```
+
+El comando toma `MIGRATION_DATABASE_URL` solamente de `.env.migracion`, invalida
+de inmediato la contraseña olvidada y devuelve una ruta de un solo uso, válida
+por 24 horas. Entregá esa ruta solo a la persona propietaria del correo. El token
+visible no se guarda en la base ni se debe ejecutar en CI o en una terminal cuyo
+historial se archive.
+
 ---
 
 ## 2. Configurar el CI
