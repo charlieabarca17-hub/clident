@@ -294,6 +294,8 @@ describe("estructura de seguridad", () => {
       "diagnostico_dientes",
       "diagnosticos",
       "dientes_ref",
+      "estados_superficie",
+      "eventos_odontograma",
       "expedientes",
       "membresias",
       "pacientes",
@@ -316,10 +318,10 @@ describe("estructura de seguridad", () => {
     const resultado = await migrator.query(
       `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-       WHERE n.nspname = 'public' AND c.relname IN ('alertas_medicas','clinicas','citas','desactivaciones_alertas_medicas','expedientes','sucursales','membresias','auditoria','pacientes','categorias_tratamiento','tratamientos','diagnosticos','diagnostico_dientes')
+       WHERE n.nspname = 'public' AND c.relname IN ('alertas_medicas','clinicas','citas','desactivaciones_alertas_medicas','expedientes','sucursales','membresias','auditoria','pacientes','categorias_tratamiento','tratamientos','diagnosticos','diagnostico_dientes','eventos_odontograma','estados_superficie')
        ORDER BY c.relname`,
     );
-    expect(resultado.rows).toHaveLength(13);
+    expect(resultado.rows).toHaveLength(15);
     expect(resultado.rows.every((fila) => fila.relrowsecurity && fila.relforcerowsecurity)).toBe(true);
   });
 
@@ -336,11 +338,11 @@ describe("estructura de seguridad", () => {
       `SELECT table_name, column_name, data_type, datetime_precision
        FROM information_schema.columns
        WHERE table_schema = 'public'
-         AND table_name IN ('alertas_medicas', 'clinicas', 'citas', 'desactivaciones_alertas_medicas', 'expedientes', 'sucursales', 'usuarios', 'membresias', 'auditoria', 'pacientes', 'categorias_tratamiento', 'tratamientos', 'diagnosticos')
+         AND table_name IN ('alertas_medicas', 'clinicas', 'citas', 'desactivaciones_alertas_medicas', 'expedientes', 'sucursales', 'usuarios', 'membresias', 'auditoria', 'pacientes', 'categorias_tratamiento', 'tratamientos', 'diagnosticos', 'eventos_odontograma', 'estados_superficie')
          AND data_type LIKE 'timestamp%'
        ORDER BY table_name, column_name`,
     );
-    expect(resultado.rows).toHaveLength(28);
+    expect(resultado.rows).toHaveLength(33);
     expect(resultado.rows.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(true);
     expect(resultado.rows.every(({ datetime_precision }) => datetime_precision === 3)).toBe(true);
   });
@@ -404,6 +406,8 @@ describe("estructura de seguridad", () => {
       tratamientos: ["SELECT", "INSERT", "UPDATE"],
       diagnosticos: ["SELECT", "INSERT", "UPDATE"],
       diagnostico_dientes: ["SELECT", "INSERT", "DELETE"],
+      eventos_odontograma: ["SELECT", "INSERT"],
+      estados_superficie: ["SELECT", "INSERT", "UPDATE", "DELETE"],
     };
     const verbos = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"] as const;
     for (const [tabla, permitidos] of Object.entries(clases)) {
@@ -418,7 +422,7 @@ describe("estructura de seguridad", () => {
   });
 
   it("append-only no concede UPDATE ni siquiera por columna", async () => {
-    for (const tabla of ["alertas_medicas", "auditoria", "desactivaciones_alertas_medicas"]) {
+    for (const tabla of ["alertas_medicas", "auditoria", "desactivaciones_alertas_medicas", "eventos_odontograma"]) {
       const resultado = await migrator.query(
         `SELECT column_name FROM information_schema.columns
          WHERE table_schema = 'public' AND table_name = $1
@@ -431,7 +435,7 @@ describe("estructura de seguridad", () => {
 
   it("clident_readonly tiene SELECT y ningún otro privilegio en toda tabla", async () => {
     const tablas = [
-      "alertas_medicas", "auditoria", "categorias_tratamiento", "clinicas", "citas", "desactivaciones_alertas_medicas", "diagnostico_dientes", "diagnosticos", "dientes_ref", "expedientes",
+      "alertas_medicas", "auditoria", "categorias_tratamiento", "clinicas", "citas", "desactivaciones_alertas_medicas", "diagnostico_dientes", "diagnosticos", "dientes_ref", "estados_superficie", "eventos_odontograma", "expedientes",
       "membresias", "pacientes", "plantillas_categoria", "plantillas_tratamiento", "sucursales", "superficies_diente", "tratamientos", "usuarios",
     ];
     const verbos = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"];
@@ -456,7 +460,7 @@ describe("estructura de seguridad", () => {
        GROUP BY tablename ORDER BY tablename`,
     );
     expect(resultado.rows.map(({ tablename }) => tablename)).toEqual([
-      "alertas_medicas", "auditoria", "categorias_tratamiento", "citas", "clinicas", "desactivaciones_alertas_medicas", "diagnostico_dientes", "diagnosticos", "expedientes", "membresias", "pacientes", "sucursales", "tratamientos",
+      "alertas_medicas", "auditoria", "categorias_tratamiento", "citas", "clinicas", "desactivaciones_alertas_medicas", "diagnostico_dientes", "diagnosticos", "estados_superficie", "eventos_odontograma", "expedientes", "membresias", "pacientes", "sucursales", "tratamientos",
     ]);
     for (const fila of resultado.rows) {
       expect(fila.tiene_migracion, `${fila.tablename}.migración`).toBe(true);

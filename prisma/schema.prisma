@@ -71,6 +71,36 @@ enum AlcanceDiagnostico {
   PACIENTE
 }
 
+// Los cuatro tipos de evento del odontograma (ADR-005). Fase 6 solo emite
+// CONDICION_REGISTRADA y CONDICION_ANULADA; los otros dos llegan con planes
+// y procedimientos, pero el reducer ya los contempla sin default.
+enum TipoEventoOdontograma {
+  CONDICION_REGISTRADA
+  TRATAMIENTO_INDICADO
+  PROCEDIMIENTO_REALIZADO
+  CONDICION_ANULADA
+}
+
+// Las 16 condiciones clínicas del catálogo (referencia de producto validada).
+enum CondicionDental {
+  SANO
+  CARIES
+  OBTURACION
+  CORONA
+  IMPLANTE
+  EXTRACCION_INDICADA
+  AUSENTE
+  ENDODONCIA
+  PUENTE
+  PROTESIS
+  SELLANTE
+  FRACTURA
+  MOVILIDAD
+  RECESION
+  ABSCESO
+  IMPACTADO
+}
+
 model Clinica {
   id            String        @id @default(cuid())
   nombre        String
@@ -91,6 +121,8 @@ model Clinica {
   tratamientos                    Tratamiento[]
   diagnosticos                    Diagnostico[]
   diagnosticoDientes              DiagnosticoDiente[]
+  eventosOdontograma              EventoOdontograma[]
+  estadosSuperficie               EstadoSuperficie[]
 
   @@map("clinicas")
 }
@@ -146,6 +178,7 @@ model Membresia {
   desactivacionesAlertasMedicas DesactivacionAlertaMedica[] @relation("AlertaDesactivadaPor")
   diagnosticosRegistrados      Diagnostico[]                @relation("DiagnosticoRegistradoPor")
   diagnosticosAnulados         Diagnostico[]                @relation("DiagnosticoAnuladoPor")
+  eventosOdontogramaRegistrados EventoOdontograma[]         @relation("EventoOdontogramaRegistradoPor")
 
   @@unique([usuarioId, clinicaId])
   @@unique([clinicaId, id])
@@ -197,6 +230,8 @@ model Paciente {
   clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   citas   Cita[]  @relation("CitaPaciente")
   expediente Expediente?
+  eventosOdontograma EventoOdontograma[]
+  estadosSuperficie  EstadoSuperficie[]
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, dui])
@@ -387,9 +422,72 @@ model SuperficieDiente {
 
   diente DienteRef @relation(fields: [fdi], references: [fdi], onDelete: Restrict, onUpdate: Restrict)
   diagnosticoDientes DiagnosticoDiente[]
+  eventosOdontograma EventoOdontograma[]
+  estadosSuperficie  EstadoSuperficie[]
 
   @@id([fdi, superficie])
   @@map("superficies_diente")
+}
+
+// FUENTE DE VERDAD del odontograma: log append-only (ADR-005). clident_app
+// solo puede SELECT e INSERT — el verbo "update" no existe para la historia
+// clínica. Las correcciones son eventos CONDICION_ANULADA, nunca borrados.
+model EventoOdontograma {
+  id              String                @id @default(cuid())
+  clinicaId       String                @map("clinica_id")
+  pacienteId      String                @map("paciente_id")
+  fdi             Int
+  superficie      Superficie
+  tipo            TipoEventoOdontograma
+  condicion       CondicionDental?
+  ocurridoEn      DateTime              @map("ocurrido_en") @db.Timestamptz(3)
+  creadoEn        DateTime              @default(now()) @map("creado_en") @db.Timestamptz(3)
+  registradoPorId String                @map("registrado_por_id")
+  diagnosticoId   String?               @map("diagnostico_id")
+  anulaEventoId   String?               @map("anula_evento_id")
+  motivoAnulacion String?               @map("motivo_anulacion")
+
+  clinica       Clinica            @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  paciente      Paciente           @relation(fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  cara          SuperficieDiente   @relation(fields: [fdi, superficie], references: [fdi, superficie], onDelete: Restrict, onUpdate: Restrict)
+  registradoPor Membresia          @relation("EventoOdontogramaRegistradoPor", fields: [clinicaId, registradoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  diagnostico   Diagnostico?       @relation(fields: [clinicaId, diagnosticoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  anulaEvento   EventoOdontograma? @relation("EventoAnulacion", fields: [clinicaId, anulaEventoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  anuladoPorEvento EventoOdontograma? @relation("EventoAnulacion")
+  estadosProyectados EstadoSuperficie[] @relation("EstadoUltimoEvento")
+
+  @@unique([clinicaId, id])
+  // Un evento se anula una sola vez: la doble anulación es un conflicto, no un update.
+  @@unique([clinicaId, anulaEventoId])
+  @@index([clinicaId, pacienteId, fdi, superficie])
+  @@index([clinicaId, pacienteId])
+  @@map("eventos_odontograma")
+}
+
+// PROYECCIÓN derivada y regenerable del estado actual (clase PROYECCION_DERIVADA):
+// el rebuild y la anulación recalculada necesitan reescribirla. Nunca es autoritativa.
+model EstadoSuperficie {
+  id                   String          @id @default(cuid())
+  clinicaId            String          @map("clinica_id")
+  pacienteId           String          @map("paciente_id")
+  fdi                  Int
+  superficie           Superficie
+  condicion            CondicionDental
+  tratamientoPendiente Boolean         @map("tratamiento_pendiente")
+  ultimoEventoId       String          @map("ultimo_evento_id")
+  ultimoEventoEn       DateTime        @map("ultimo_evento_en") @db.Timestamptz(3)
+  ultimoEventoCreadoEn DateTime        @map("ultimo_evento_creado_en") @db.Timestamptz(3)
+  actualizadoEn        DateTime        @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica      Clinica           @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  paciente     Paciente          @relation(fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  cara         SuperficieDiente  @relation(fields: [fdi, superficie], references: [fdi, superficie], onDelete: Restrict, onUpdate: Restrict)
+  ultimoEvento EventoOdontograma @relation("EstadoUltimoEvento", fields: [clinicaId, ultimoEventoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, pacienteId, fdi, superficie])
+  @@index([clinicaId, pacienteId])
+  @@map("estados_superficie")
 }
 
 // Acto profesional del odontólogo. Nunca se borra ni se edita su contenido:
@@ -413,6 +511,7 @@ model Diagnostico {
   registradoPor Membresia  @relation("DiagnosticoRegistradoPor", fields: [clinicaId, registradoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   anuladoPor    Membresia? @relation("DiagnosticoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   dientes       DiagnosticoDiente[]
+  eventosOdontograma EventoOdontograma[]
 
   @@unique([clinicaId, id])
   @@index([clinicaId, expedienteId])
