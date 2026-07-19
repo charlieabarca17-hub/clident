@@ -73,6 +73,45 @@ async function conContexto<T>(
   }
 }
 
+/**
+ * Prisma con driver adapter envuelve los errores de PostgreSQL, y el SQLSTATE
+ * queda anidado en la causa en vez de en la raíz. Esta función lo busca en
+ * cualquier nivel, para que la prueba afirme sobre la regla de la base y no
+ * sobre la forma que Prisma le dé al error en cada versión.
+ */
+function violaRegla(error: unknown, sqlstate?: string): boolean {
+  const textos: string[] = [];
+  let actual: unknown = error;
+  for (let nivel = 0; nivel < 5 && actual; nivel += 1) {
+    if (typeof actual !== "object") break;
+    const obj = actual as { code?: unknown; message?: unknown; cause?: unknown; meta?: unknown };
+    if (sqlstate && obj.code === sqlstate) return true;
+    if (typeof obj.message === "string") textos.push(obj.message);
+    const meta = obj.meta as { code?: unknown; message?: unknown } | undefined;
+    if (sqlstate && meta?.code === sqlstate) return true;
+    if (typeof meta?.message === "string") textos.push(meta.message);
+    actual = obj.cause;
+  }
+  const todo = textos.join(" ");
+  // 23514 = violación de CHECK. El mensaje de PostgreSQL siempre lo nombra.
+  if (sqlstate === "23514") return /violates check constraint/i.test(todo);
+  if (sqlstate === "23503") return /violates foreign key constraint/i.test(todo);
+  if (sqlstate === "23505") return /duplicate key|violates unique/i.test(todo);
+  if (sqlstate === "42501") return /permission denied/i.test(todo);
+  return textos.length > 0;
+}
+
+async function rechaza(promesa: Promise<unknown>, sqlstate?: string): Promise<void> {
+  let capturado: unknown;
+  try {
+    await promesa;
+  } catch (e) {
+    capturado = e;
+  }
+  expect(capturado, "se esperaba que la base rechazara la operación").toBeDefined();
+  expect(violaRegla(capturado, sqlstate), `error inesperado: ${String(capturado)}`).toBe(true);
+}
+
 let clinica: Bootstrap;
 let ctx: TenantContext;
 let pacienteId: string;
@@ -258,7 +297,7 @@ describe("las 18 cuotas — criterio de salida", () => {
   });
 
   it("una cuota con fecha absurda la rechaza el CHECK de rango", async () => {
-    await expect(
+    await rechaza(
       crearCargo(ctx, {
         pacienteId,
         descripcion: "Cuota con año equivocado",
@@ -267,7 +306,8 @@ describe("las 18 cuotas — criterio de salida", () => {
           { procedimientoId: null, descripcion: "Cuota", precioOriginalCentavos: 6000, descuentoCentavos: 0 },
         ],
       }),
-    ).rejects.toMatchObject({ code: "23514" });
+      "23514",
+    );
   });
 });
 
@@ -310,18 +350,20 @@ describe("pagos, aplicaciones y los dos contadores", () => {
   });
 
   it("sobreaplicar por el lado del cargo truena en el CHECK", async () => {
-    await expect(
+    await rechaza(
       aplicarPago(ctx, { pagoId, cargoId: cargoResinaId, montoCentavos: 100 }),
-    ).rejects.toMatchObject({ code: expect.anything() });
+      "23514",
+    );
   });
 
   it("sobreaplicar por el lado del pago truena en el SEGUNDO contador", async () => {
     // Quedan $60 disponibles del pago; intentar aplicar $70 a una cuota de $60...
     const cuenta = await getEstadoCuenta(ctx, pacienteId);
     const cuota = cuenta!.cargos.find((c) => c.cuotaNumero === 2)!;
-    await expect(
+    await rechaza(
       aplicarPago(ctx, { pagoId, cargoId: cuota.id, montoCentavos: 6100 }),
-    ).rejects.toMatchObject({ code: expect.anything() });
+      "23514",
+    );
   });
 
   it("la reversa completa devuelve los contadores y el crédito", async () => {

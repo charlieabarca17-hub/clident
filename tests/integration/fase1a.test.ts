@@ -122,21 +122,30 @@ afterAll(async () => {
 
 describe("bootstrap y referencias globales", () => {
   it("crea clínica, sede, administrador, membresía y auditoría", async () => {
+    // Cuenta SOLO las clínicas que creó este archivo. Los demás archivos de la
+    // suite crean las suyas contra la misma base, así que un conteo global
+    // dependería del orden de ejecución y fallaría por razones ajenas al bootstrap.
+    const mias = [clinicaA.clinicaId, clinicaB.clinicaId];
     const resultado = await migrator.query(
       `SELECT
-        (SELECT count(*)::int FROM clinicas) AS clinicas,
-        (SELECT count(*)::int FROM sucursales) AS sucursales,
-        (SELECT count(*)::int FROM usuarios) AS usuarios,
-        (SELECT count(*)::int FROM membresias) AS membresias,
-        (SELECT count(*)::int FROM auditoria) AS auditorias`,
+        (SELECT count(*)::int FROM clinicas    WHERE id         = ANY($1)) AS clinicas,
+        (SELECT count(*)::int FROM sucursales  WHERE clinica_id = ANY($1)) AS sucursales,
+        (SELECT count(*)::int FROM membresias  WHERE clinica_id = ANY($1)) AS membresias,
+        (SELECT count(*)::int FROM auditoria   WHERE clinica_id = ANY($1)) AS auditorias`,
+      [mias],
     );
     expect(resultado.rows[0]).toEqual({
       clinicas: 2,
       sucursales: 2,
-      usuarios: 2,
+      // Dos del bootstrap (una por clínica, mismo usuario administrador) más
+      // la de recepción que este archivo agrega a la clínica A para probar
+      // que un usuario de una sola clínica no enumera las ajenas.
       membresias: 3,
       auditorias: 2,
     });
+
+    // El usuario se comparte entre clínicas: es identidad global (ADR-003).
+    expect(clinicaB.usuarioId).toBe(clinicaA.usuarioId);
   });
 
   it("proyecta exactamente los 52 dientes y sus superficies", async () => {

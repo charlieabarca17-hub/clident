@@ -52,9 +52,6 @@ CREATE TABLE "eventos_odontograma" (
     ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT "eventos_odontograma_clinica_id_diagnostico_id_fkey"
     FOREIGN KEY ("clinica_id", "diagnostico_id") REFERENCES "diagnosticos"("clinica_id", "id")
-    ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT "eventos_odontograma_clinica_id_anula_evento_id_fkey"
-    FOREIGN KEY ("clinica_id", "anula_evento_id") REFERENCES "eventos_odontograma"("clinica_id", "id")
     ON DELETE RESTRICT ON UPDATE RESTRICT
 );
 
@@ -63,6 +60,15 @@ CREATE UNIQUE INDEX "eventos_odontograma_clinica_id_id_key"
 -- Un evento solo puede anularse una vez; el segundo intento es conflicto de unicidad.
 CREATE UNIQUE INDEX "eventos_odontograma_clinica_id_anula_evento_id_key"
   ON "eventos_odontograma"("clinica_id", "anula_evento_id");
+
+-- La FK autorreferencial va DESPUÉS del índice único, no dentro del CREATE TABLE:
+-- PostgreSQL exige que el destino de una FK ya tenga su restricción única, y una
+-- tabla que se referencia a sí misma todavía no la tiene mientras se está creando.
+-- (Detectado al aplicar contra PostgreSQL real: error 42830.)
+ALTER TABLE "eventos_odontograma"
+  ADD CONSTRAINT "eventos_odontograma_clinica_id_anula_evento_id_fkey"
+  FOREIGN KEY ("clinica_id", "anula_evento_id") REFERENCES "eventos_odontograma"("clinica_id", "id")
+  ON DELETE RESTRICT ON UPDATE RESTRICT;
 CREATE INDEX "eventos_odontograma_clinica_id_paciente_id_fdi_superficie_idx"
   ON "eventos_odontograma"("clinica_id", "paciente_id", "fdi", "superficie");
 CREATE INDEX "eventos_odontograma_clinica_id_paciente_id_idx"

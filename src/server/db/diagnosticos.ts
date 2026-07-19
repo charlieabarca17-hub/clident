@@ -62,7 +62,11 @@ export async function crearDiagnostico(ctx: TenantContext, input: CrearDiagnosti
     const expedienteId = await expedienteDelPaciente(tx, ctx, input.pacienteId);
     if (!expedienteId) return null;
 
-    const diagnostico = await tx.diagnostico.create({
+    // Los dientes se crean aparte, no anidados: `clinicaId` participa en dos
+    // relaciones a la vez (hacia la clínica y hacia el diagnóstico por clave
+    // compuesta), y Prisma no permite asignarlo dentro de un create anidado.
+    // De paso, createMany inserta las piezas en un solo viaje a la base.
+    const creado = await tx.diagnostico.create({
       data: {
         clinicaId: ctx.clinicaId,
         expedienteId,
@@ -70,14 +74,21 @@ export async function crearDiagnostico(ctx: TenantContext, input: CrearDiagnosti
         notas: input.notas,
         alcance: input.alcance,
         registradoPorId: ctx.membresiaId,
-        dientes: {
-          create: input.dientes.map((diente) => ({
-            clinicaId: ctx.clinicaId,
-            fdi: diente.fdi,
-            superficie: diente.superficie,
-          })),
-        },
       },
+      select: { id: true },
+    });
+    if (input.dientes.length > 0) {
+      await tx.diagnosticoDiente.createMany({
+        data: input.dientes.map((diente) => ({
+          clinicaId: ctx.clinicaId,
+          diagnosticoId: creado.id,
+          fdi: diente.fdi,
+          superficie: diente.superficie,
+        })),
+      });
+    }
+    const diagnostico = await tx.diagnostico.findFirstOrThrow({
+      where: { id: creado.id, clinicaId: ctx.clinicaId },
       select: SELECT_DIAGNOSTICO,
     });
     await registrarAuditoria(tx, ctx, "DIAGNOSTICO_CREADO", diagnostico.id);

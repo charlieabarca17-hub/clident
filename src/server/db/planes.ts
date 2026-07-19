@@ -176,16 +176,21 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
         precioUnitarioCentavos: tratamiento.precioListaCentavos,
         descuentoCentavos: input.descuentoCentavos,
         creadoPorId: ctx.membresiaId,
-        dientes: {
-          create: input.dientes.map((diente) => ({
-            clinicaId: ctx.clinicaId,
-            fdi: diente.fdi,
-            superficie: diente.superficie,
-          })),
-        },
       },
       select: { id: true },
     });
+    // Aparte y en lote: `clinicaId` participa en dos relaciones y Prisma no lo
+    // acepta dentro de un create anidado (ver la misma nota en diagnosticos.ts).
+    if (input.dientes.length > 0) {
+      await tx.planItemDiente.createMany({
+        data: input.dientes.map((diente) => ({
+          clinicaId: ctx.clinicaId,
+          planItemId: item.id,
+          fdi: diente.fdi,
+          superficie: diente.superficie,
+        })),
+      });
+    }
     await registrarAuditoria(tx, ctx, "PLAN_ITEM_AGREGADO", plan.id, { itemId: item.id });
     return toPlanDto((await getPlanInterno(tx, ctx, plan.id))!);
   });

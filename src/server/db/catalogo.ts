@@ -1,5 +1,7 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import type { Prisma } from "./generated/client";
 import type { TenantContext } from "@/server/auth/types";
 import { requirePermiso } from "@/server/auth/permissions";
@@ -117,38 +119,46 @@ export async function clonarCatalogo(ctx: TenantContext) {
       );
     }
 
-    let tratamientosCreados = 0;
-    for (const plantilla of plantillasCategoria) {
-      const categoria = await tx.categoriaTratamiento.create({
-        data: {
-          clinicaId: ctx.clinicaId,
-          nombre: plantilla.nombre,
-          orden: plantilla.orden,
-        },
-        select: { id: true },
-      });
-      for (const tratamiento of plantilla.plantillas) {
-        await tx.tratamiento.create({
-          data: {
-            clinicaId: ctx.clinicaId,
-            categoriaId: categoria.id,
-            codigo: tratamiento.codigo,
-            nombre: tratamiento.nombre,
-            // El precio sugerido se copia como precio de lista inicial; desde
-            // aquí, el precio es de la clínica y la plantilla deja de importar.
-            precioListaCentavos: tratamiento.precioSugeridoCentavos,
-            alcance: tratamiento.alcance,
-            requiereDiente: tratamiento.requiereDiente,
-            permiteMultiplesDientes: tratamiento.permiteMultiplesDientes,
-            permiteSuperficies: tratamiento.permiteSuperficies,
-            permiteMultiplesSuperficies: tratamiento.permiteMultiplesSuperficies,
-            requiereDiagnostico: tratamiento.requiereDiagnostico,
-            permiteMultiplesSesiones: tratamiento.permiteMultiplesSesiones,
-          },
-        });
-        tratamientosCreados += 1;
-      }
-    }
+    // Dos inserciones masivas, no 106 individuales. Contra una base en la nube
+    // cada viaje cuesta decenas de milisegundos: fila por fila, clonar 12
+    // categorías y ~94 tratamientos supera el límite de tiempo de la
+    // transacción y el usuario ve un error al inicializar su catálogo.
+    // (Detectado al correr contra Neon real: la transacción tardaba 5.7 s.)
+    //
+    // Los ids se generan acá para poder relacionar cada tratamiento con su
+    // categoría sin releer la tabla: createMany no devuelve lo que insertó.
+    const categorias = plantillasCategoria.map((plantilla) => ({
+      id: randomUUID(),
+      clinicaId: ctx.clinicaId,
+      nombre: plantilla.nombre,
+      orden: plantilla.orden,
+    }));
+    await tx.categoriaTratamiento.createMany({ data: categorias });
+
+    const idPorPlantilla = new Map(
+      plantillasCategoria.map((plantilla, indice) => [plantilla.id, categorias[indice].id]),
+    );
+    const tratamientos = plantillasCategoria.flatMap((plantilla) =>
+      plantilla.plantillas.map((tratamiento) => ({
+        id: randomUUID(),
+        clinicaId: ctx.clinicaId,
+        categoriaId: idPorPlantilla.get(plantilla.id)!,
+        codigo: tratamiento.codigo,
+        nombre: tratamiento.nombre,
+        // El precio sugerido se copia como precio de lista inicial; desde
+        // aquí, el precio es de la clínica y la plantilla deja de importar.
+        precioListaCentavos: tratamiento.precioSugeridoCentavos,
+        alcance: tratamiento.alcance,
+        requiereDiente: tratamiento.requiereDiente,
+        permiteMultiplesDientes: tratamiento.permiteMultiplesDientes,
+        permiteSuperficies: tratamiento.permiteSuperficies,
+        permiteMultiplesSuperficies: tratamiento.permiteMultiplesSuperficies,
+        requiereDiagnostico: tratamiento.requiereDiagnostico,
+        permiteMultiplesSesiones: tratamiento.permiteMultiplesSesiones,
+      })),
+    );
+    await tx.tratamiento.createMany({ data: tratamientos });
+    const tratamientosCreados = tratamientos.length;
 
     await registrarAuditoria(tx, ctx, "CATALOGO_CLONADO", null, {
       categorias: plantillasCategoria.length,

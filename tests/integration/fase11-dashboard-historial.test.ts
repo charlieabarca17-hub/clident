@@ -65,6 +65,14 @@ beforeAll(async () => {
   };
   ctxRecepcion = { ...ctx, roles: ["RECEPCION"] };
 
+  // La membresía del bootstrap nace como ADMINISTRADOR, y agendar exige el rol
+  // ODONTOLOGO (la agenda no acepta a cualquiera como profesional tratante).
+  await migrator.query(
+    `UPDATE membresias SET roles = ARRAY['ADMINISTRADOR','ODONTOLOGO']::"Rol"[]
+      WHERE id = $1 AND clinica_id = $2`,
+    [clinica.membresiaId, clinica.clinicaId],
+  );
+
   await clonarCatalogo(ctx);
   const tratamientos = (await listarCatalogo(ctx)).flatMap((c) => c.tratamientos);
   const resinaId = tratamientos.find((t) => t.codigo === "RES-01")!.id;
@@ -93,8 +101,9 @@ beforeAll(async () => {
     CrearCitaSchema.parse({
       pacienteId,
       odontologoId: clinica.membresiaId,
-      inicioEn: `${hoy}T15:00`,
-      finEn: `${hoy}T16:00`,
+      fecha: hoy,
+      hora: "15:00",
+      duracionMinutos: 60,
       motivo: "Control",
       notasAdministrativas: "",
     }),

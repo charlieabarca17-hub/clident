@@ -146,7 +146,7 @@ export async function realizarProcedimiento(
       throw new Error("Este tratamiento admite una sola superficie.");
     }
 
-    const procedimiento = await tx.procedimiento.create({
+    const creado = await tx.procedimiento.create({
       data: {
         clinicaId: ctx.clinicaId,
         sucursalId: await sucursalPredeterminada(tx, ctx.clinicaId),
@@ -164,14 +164,23 @@ export async function realizarProcedimiento(
         realizadoEn: input.realizadoEn,
         notasClinicas: input.notasClinicas,
         creadoPorId: ctx.membresiaId,
-        dientes: {
-          create: input.dientes.map((diente) => ({
-            clinicaId: ctx.clinicaId,
-            fdi: diente.fdi,
-            superficie: diente.superficie,
-          })),
-        },
       },
+      select: { id: true },
+    });
+    // Aparte y en lote: `clinicaId` participa en dos relaciones y Prisma no lo
+    // acepta dentro de un create anidado (ver la nota en diagnosticos.ts).
+    if (input.dientes.length > 0) {
+      await tx.procedimientoDiente.createMany({
+        data: input.dientes.map((diente) => ({
+          clinicaId: ctx.clinicaId,
+          procedimientoId: creado.id,
+          fdi: diente.fdi,
+          superficie: diente.superficie,
+        })),
+      });
+    }
+    const procedimiento = await tx.procedimiento.findFirstOrThrow({
+      where: { id: creado.id, clinicaId: ctx.clinicaId },
       select: SELECT_PROCEDIMIENTO,
     });
 

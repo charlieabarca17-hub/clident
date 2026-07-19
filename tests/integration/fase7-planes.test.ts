@@ -271,9 +271,12 @@ describe("ciclo de vida del plan", () => {
     expect(auditoria.rows).toHaveLength(1);
     expect(auditoria.rows[0].detalle.itemsAceptados).toEqual([itemEndo.id]);
 
-    // Y aceptar NO creó ninguna tabla ni fila financiera: no existe "cargos" todavía.
+    // Y aceptar NO creó deuda registrada (ADR-007). Se comprueba contra las
+    // filas del paciente, no contra la existencia de la tabla: con todas las
+    // migraciones aplicadas, `cargos` existe desde la fase 9.
     const cargos = await migrator.query(
-      `SELECT count(*)::int AS total FROM pg_tables WHERE schemaname = 'public' AND tablename = 'cargos'`,
+      `SELECT count(*)::int AS total FROM cargos WHERE clinica_id = $1 AND paciente_id = $2`,
+      [clinica.clinicaId, pacienteId],
     );
     expect(cargos.rows[0].total).toBe(0);
   });

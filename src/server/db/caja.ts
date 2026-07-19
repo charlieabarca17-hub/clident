@@ -159,7 +159,7 @@ async function crearCargoEnTx(tx: TenantTransaction, ctx: TenantContext, input: 
     }
     const montoTotal = lineas.reduce((suma, linea) => suma + linea.montoCentavos, 0);
 
-    const cargo = await tx.cargo.create({
+    const creado = await tx.cargo.create({
       data: {
         clinicaId: ctx.clinicaId,
         pacienteId: paciente.id,
@@ -170,8 +170,16 @@ async function crearCargoEnTx(tx: TenantTransaction, ctx: TenantContext, input: 
         planItemId: input.planItemId ?? null,
         cuotaNumero: input.cuotaNumero ?? null,
         creadoPorId: ctx.membresiaId,
-        lineas: { create: lineas.map((linea) => ({ clinicaId: ctx.clinicaId, ...linea })) },
       },
+      select: { id: true },
+    });
+    // Aparte y en lote: `clinicaId` participa en dos relaciones y Prisma no lo
+    // acepta dentro de un create anidado (ver la nota en diagnosticos.ts).
+    await tx.lineaCargo.createMany({
+      data: lineas.map((linea) => ({ clinicaId: ctx.clinicaId, cargoId: creado.id, ...linea })),
+    });
+    const cargo = await tx.cargo.findFirstOrThrow({
+      where: { id: creado.id, clinicaId: ctx.clinicaId },
       select: SELECT_CARGO,
     });
 
@@ -358,6 +366,16 @@ export async function reversarAplicacion(ctx: TenantContext, aplicacionId: strin
       select: { id: true, pagoId: true, cargoId: true, montoCentavos: true },
     });
     if (!original) return null;
+
+    // Verificar ANTES de tocar los contadores. El índice único impide la
+    // segunda reversa, pero recién al insertar: sin este chequeo el decremento
+    // ya ocurrió y el usuario ve una violación de CHECK en lugar de un rechazo
+    // legible. (Detectado por la prueba de doble reversa contra PostgreSQL real.)
+    const yaRevertida = await tx.aplicacionPago.findFirst({
+      where: { clinicaId: ctx.clinicaId, reversaDeAplicacionId: original.id },
+      select: { id: true },
+    });
+    if (yaRevertida) return null;
 
     // Orden §13.3: pago, luego cargo — el mismo de la aplicación.
     await tx.pago.update({
