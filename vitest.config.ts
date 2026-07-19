@@ -11,6 +11,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // Mismo stub que la suite de integración: `server-only` es un módulo
+      // virtual del compilador de Next, y un módulo de servidor sin Prisma
+      // (rate-limit, por ejemplo) es perfectamente testeable en Node.
+      "server-only": fileURLToPath(new URL("./tests/server-only.ts", import.meta.url)),
     },
   },
   test: {

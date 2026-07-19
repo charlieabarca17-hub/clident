@@ -46,6 +46,15 @@ jobs:
       - name: Tests unitarios
         run: npm test
 
+      # El build detecta errores que ni el typecheck ni las pruebas ven: un
+      # Server Component que importa código de cliente, una ruta que no
+      # compila. Las variables son marcadores: `next build` no consulta la base.
+      - name: Build de producción
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          AUTH_SECRET: solo-para-compilar-nunca-para-firmar-en-produccion
+        run: npm run build
+
   integracion:
     name: Tests de integración (Neon, rama pruebas)
     runs-on: ubuntu-latest
