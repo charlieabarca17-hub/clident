@@ -64,6 +64,13 @@ enum AlcanceTratamiento {
   BOCA
 }
 
+// Un diagnóstico de paciente (bruxismo) simplemente no tiene filas en
+// diagnostico_dientes; uno de DIENTE tiene una o más (ARQUITECTURA §10.3).
+enum AlcanceDiagnostico {
+  DIENTE
+  PACIENTE
+}
+
 model Clinica {
   id            String        @id @default(cuid())
   nombre        String
@@ -82,6 +89,8 @@ model Clinica {
   desactivacionesAlertasMedicas   DesactivacionAlertaMedica[]
   categoriasTratamiento           CategoriaTratamiento[]
   tratamientos                    Tratamiento[]
+  diagnosticos                    Diagnostico[]
+  diagnosticoDientes              DiagnosticoDiente[]
 
   @@map("clinicas")
 }
@@ -135,6 +144,8 @@ model Membresia {
   citasComoOdontologo          Cita[]                       @relation("CitaOdontologo")
   alertasCreadas               AlertaMedica[]               @relation("AlertaCreadaPor")
   desactivacionesAlertasMedicas DesactivacionAlertaMedica[] @relation("AlertaDesactivadaPor")
+  diagnosticosRegistrados      Diagnostico[]                @relation("DiagnosticoRegistradoPor")
+  diagnosticosAnulados         Diagnostico[]                @relation("DiagnosticoAnuladoPor")
 
   @@unique([usuarioId, clinicaId])
   @@unique([clinicaId, id])
@@ -207,6 +218,7 @@ model Expediente {
   clinica  Clinica  @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   paciente Paciente @relation(fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   alertas  AlertaMedica[]
+  diagnosticos Diagnostico[]
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, pacienteId])
@@ -374,7 +386,55 @@ model SuperficieDiente {
   superficie Superficie
 
   diente DienteRef @relation(fields: [fdi], references: [fdi], onDelete: Restrict, onUpdate: Restrict)
+  diagnosticoDientes DiagnosticoDiente[]
 
   @@id([fdi, superficie])
   @@map("superficies_diente")
+}
+
+// Acto profesional del odontólogo. Nunca se borra ni se edita su contenido:
+// un diagnóstico equivocado se anula con motivo y se registra uno nuevo (§9).
+model Diagnostico {
+  id              String             @id @default(cuid())
+  clinicaId       String             @map("clinica_id")
+  expedienteId    String             @map("expediente_id")
+  descripcion     String
+  notas           String?
+  alcance         AlcanceDiagnostico
+  registradoPorId String             @map("registrado_por_id")
+  anuladoEn       DateTime?          @map("anulado_en") @db.Timestamptz(3)
+  anuladoPorId    String?            @map("anulado_por_id")
+  motivoAnulacion String?            @map("motivo_anulacion")
+  creadoEn        DateTime           @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn   DateTime           @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica       Clinica    @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  expediente    Expediente @relation(fields: [clinicaId, expedienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  registradoPor Membresia  @relation("DiagnosticoRegistradoPor", fields: [clinicaId, registradoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  anuladoPor    Membresia? @relation("DiagnosticoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  dientes       DiagnosticoDiente[]
+
+  @@unique([clinicaId, id])
+  @@index([clinicaId, expedienteId])
+  @@map("diagnosticos")
+}
+
+// Puente editable (SELECT, INSERT, DELETE): cubre multi-diente y multi-superficie
+// con una sola tabla. La FK a superficies_diente hace imposible una cara que la
+// pieza no tiene ("caries oclusal en el 11" no se puede escribir).
+model DiagnosticoDiente {
+  id            String     @id @default(cuid())
+  clinicaId     String     @map("clinica_id")
+  diagnosticoId String     @map("diagnostico_id")
+  fdi           Int
+  superficie    Superficie
+
+  clinica     Clinica          @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  diagnostico Diagnostico      @relation(fields: [clinicaId, diagnosticoId], references: [clinicaId, id], onDelete: Cascade, onUpdate: Restrict)
+  cara        SuperficieDiente @relation(fields: [fdi, superficie], references: [fdi, superficie], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, diagnosticoId, fdi, superficie])
+  @@index([clinicaId, diagnosticoId])
+  @@map("diagnostico_dientes")
 }

@@ -83,6 +83,7 @@ export default async function PacienteExpedientePage({ params, searchParams }: P
             <a href="#resumen" className="rounded-full bg-neutral-900 px-3 py-1.5 font-medium text-white">Resumen</a>
             <a href="#agenda" className="rounded-full border px-3 py-1.5 font-medium">Agenda</a>
             {puedeLeerClinico ? <a href="#alertas" className="rounded-full border px-3 py-1.5 font-medium">Alertas médicas</a> : null}
+            {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/diagnosticos`} className="rounded-full border px-3 py-1.5 font-medium">Diagnósticos</Link> : null}
             <span className="rounded-full border border-dashed px-3 py-1.5 text-neutral-500">Historial clínico · Próximamente</span>
             <span className="rounded-full border border-dashed px-3 py-1.5 text-neutral-500">Odontograma · Próximamente</span>
             <span className="rounded-full border border-dashed px-3 py-1.5 text-neutral-500">Planes y caja · Próximamente</span>
