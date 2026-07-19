@@ -18,6 +18,17 @@ export function hoyElSalvador(ahora: Date = new Date()): string {
 }
 
 /**
+ * Los instantes que abren y cierran un día civil salvadoreño. El Salvador es
+ * UTC-6 sin horario de verano, así que el desfase es fijo — pero se escribe
+ * acá una sola vez para que ningún módulo lo reinvente con `new Date()` local.
+ */
+export function limitesDelDia(fechaCivil: string): { inicio: Date; fin: Date } {
+  const inicio = new Date(`${fechaCivil}T00:00:00-06:00`);
+  const fin = new Date(inicio.getTime() + 24 * 60 * 60 * 1000);
+  return { inicio, fin };
+}
+
+/**
  * Genera las fechas de un calendario de cuotas mensuales a partir de la
  * primera. Si el día no existe en un mes (31 de febrero), se usa el último
  * día de ese mes. Devuelve strings "YYYY-MM-DD": son días civiles, no instantes.

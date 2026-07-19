@@ -88,6 +88,7 @@ export default async function PacienteExpedientePage({ params, searchParams }: P
             {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/planes`} className="rounded-full border px-3 py-1.5 font-medium">Planes</Link> : null}
             {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/procedimientos`} className="rounded-full border px-3 py-1.5 font-medium">Procedimientos</Link> : null}
             {tienePermiso(ctx.roles, "caja:read") ? <Link href={`/caja/${paciente.id}`} className="rounded-full border px-3 py-1.5 font-medium">Estado de cuenta</Link> : null}
+            <Link href={`/pacientes/${paciente.id}/historial`} className="rounded-full border px-3 py-1.5 font-medium">Historial</Link>
           </nav>
         </header>
 
