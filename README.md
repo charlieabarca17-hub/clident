@@ -154,6 +154,14 @@ ruta de un solo uso. El token visible no se guarda en la base; únicamente se al
 npm run invitar-admin -- correo@ejemplo.com
 ```
 
+Si un usuario existente olvida su contraseña, el propietario puede invalidar la clave anterior y
+generar una ruta de reemplazo de un solo uso, válida por 24 horas. El comando carga únicamente la
+credencial de migración desde `.env.migracion`; nunca la expongás en la aplicación ni en Vercel.
+
+```powershell
+npm run restablecer-contrasena -- correo@ejemplo.com
+```
+
 ## Estructura del repositorio
 
 ```text

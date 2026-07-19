@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "invitar-admin": "node --experimental-strip-types infra/crear-invitacion.ts",
+    "restablecer-contrasena": "node --env-file=.env.migracion --experimental-strip-types infra/restablecer-contrasena.ts",
     "seed:dientes": "node --experimental-strip-types prisma/seed/dientes.ts",
     "seed:catalogo": "node --experimental-strip-types prisma/seed/tratamientos.ts",
     "odontograma:rebuild": "node --experimental-strip-types infra/reconstruir-odontograma.ts",
