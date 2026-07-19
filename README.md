@@ -25,9 +25,9 @@ de una clínica: agendar, atender, diagnosticar, planificar, ejecutar, cobrar y 
 | Catálogo | Plantillas de plataforma clonables; sin duplicación por superficie. |
 | Diagnósticos | Separados del tratamiento; multi-diente y multi-superficie; anulables con motivo. |
 | Odontograma | Eventos append-only con proyección derivada y `rebuild` verificado por equivalencia. |
-| Planes | Precio congelado al crear e inmutable por privilegio de columna. |
+| Planes | Precio acordado libre por paciente, congelado al crear e inmutable. |
 | Procedimientos | Hecho clínico inmutable; nota editable 12 h y enmiendas que preservan el original. |
-| Caja | La cuenta por cobrar nace solo aquí; dos contadores contra sobreaplicación; cinco saldos. |
+| Caja | Cobro único por tratamiento o cuotas por el mismo total; dos contadores y cinco saldos. |
 | Inventario | Stock que no puede quedar negativo; movimientos append-only. |
 | Tablero e historial | KPIs del día y el recorrido completo del paciente en una línea de tiempo. |
 

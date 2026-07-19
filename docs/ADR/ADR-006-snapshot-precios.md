@@ -1,6 +1,6 @@
 # ADR-006 — Snapshot histórico de tratamientos y precios
 
-- **Estado:** Aceptado
+- **Estado:** Aceptado — superseded parcialmente por ADR-017 (solo el origen del monto)
 - **Fecha:** 2026-07-17
 - **Ciclo:** 0
 
@@ -15,6 +15,10 @@ Un plan es un compromiso con un paciente. Si en marzo se le presupuestó una cor
 ## Decisión
 
 **Copiar (congelar) el precio, el nombre y el código del tratamiento al momento de crear el `PlanItem`.**
+
+> **Actualización, ADR-017:** se conserva el snapshot, pero el monto ya no se
+> copia automáticamente del catálogo. El catálogo es referencia y el
+> odontólogo fija el precio acordado para ese paciente al crear el `PlanItem`.
 
 ```prisma
 model PlanItem {

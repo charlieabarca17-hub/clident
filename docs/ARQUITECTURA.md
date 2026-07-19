@@ -594,7 +594,7 @@ Banderas de comportamiento: `requiereDiente`, `permiteMultiplesDientes`, `permit
 
 ## 10.5 Procedimientos
 
-**Inmutable tras crearse:** `realizadoEn`, `precioAplicadoCentavos`, `tratamientoId`, dientes y superficies.
+**Inmutable tras crearse:** `realizadoEn`, `precioAplicadoCentavos`, `tratamientoId`, dientes y superficies. ADR-017 define `precioAplicadoCentavos`: la primera sesión realizada conserva el total final acordado del `PlanItem`; las sesiones posteriores llevan `0` porque están incluidas. Un índice parcial garantiza una sola sesión con precio positivo por `PlanItem`.
 
 **"Inmutable" es un privilegio de PostgreSQL, no una convención.** `procedimientos` **no puede** ser append-only —necesita `UPDATE` para la nota clínica de 12 h y para pasar a `ANULADO`—, así que es **PARCIALMENTE_INMUTABLE** (§4.2.1): se le quita `UPDATE` de tabla y se le devuelve solo sobre las columnas mutables. Sin eso, "inmutable" sería exactamente el tipo de regla que este proyecto existe para no tener: una convención que un agente viola con un `update` que se ve razonable en la revisión. Y es **dinero**, o sea que el principio rector exige hacerla cumplir en la base aunque cueste legibilidad.
 
@@ -616,11 +616,11 @@ GRANT UPDATE (estado, notas_clinicas, anulado_en, anulado_por_id,
 | `clinicaId` | **INMUTABLE** | doble candado: sin `UPDATE` **y** las FK compuestas lo rechazarían (ADR-004) |
 | `sucursalId` | **INMUTABLE** | dónde ocurrió es un hecho histórico |
 | `pacienteId` | **INMUTABLE** | mover un hecho clínico a otro paciente es reescribir historia |
-| `planItemId` | **INMUTABLE** | determina el tratamiento y el eventual precio de sesión (#10) |
+| `planItemId` | **INMUTABLE** | determina el tratamiento y su precio total acordado (ADR-017) |
 | `odontologoId` | **INMUTABLE** | quién lo hizo es un hecho legal del expediente |
 | `tratamientoId`, `tratamientoNombre`, `tratamientoCodigo` | **INMUTABLE** | snapshots (ADR-006) |
 | `realizadoEn` | **INMUTABLE** | hecho clínico |
-| `precioAplicadoCentavos` | **INMUTABLE** | es dinero |
+| `precioAplicadoCentavos` | **INMUTABLE** | snapshot clínico: total en primera sesión, 0 en las incluidas (ADR-017) |
 | `creadoEn`, `creadoPorId` | **INMUTABLE** | procedencia |
 | `estado` | **MUTABLE** | `REALIZADO → ANULADO`, amarrado por el `CHECK` de abajo |
 | `notasClinicas` | **MUTABLE** | ventana de gracia de 12 h |
@@ -664,7 +664,7 @@ ALTER TABLE procedimientos ADD CONSTRAINT procedimiento_estado_coherente CHECK (
 
 ### `plan_items` es PARCIALMENTE_INMUTABLE — lista canónica
 
-**`PlanItem` guarda el precio congelado, y eso es dinero.** El ADR-006 lo protege del **join** al catálogo; **no lo protegía del `UPDATE` directo.** Hasta el Ciclo 1, `plan_items` estaba en la clase NORMAL: `precio_unitario_centavos` era escribible, mientras `cargos.monto_centavos` y `procedimientos.precio_aplicado_centavos` ya estaban cerrados por privilegio. **El principio rector se había aplicado a dos de las tres tablas de dinero.**
+**`PlanItem` guarda el precio acordado para ese paciente, y eso es dinero.** El catálogo solo sugiere el monto (ADR-017); al crear el ítem, el odontólogo fija `precioUnitarioCentavos` y el snapshot queda congelado (ADR-006). El privilegio de columna también impide reescribirlo directamente.
 
 ```sql
 -- Fase 7. El orden no es negociable (§4.2.2).
@@ -758,17 +758,17 @@ catch (e) {
 | Pagado | `AplicacionPago` cubre el `Cargo` | — |
 | Saldo **exigible** | `Σ(Cargo.montoCentavos − montoAplicadoCentavos)` con `anuladoEn IS NULL` **y `fechaExigibleEn <= hoy`** | ✅ |
 
-**No existe ninguna ruta automática de plan o procedimiento a `Cargo`.** Solo `crearCargo(ctx, ...)` desde Caja, con permiso `caja:write`. **Nada más en el código la importa** — y **no hay una variante "automática" para cuotas**: el calendario de ortodoncia es esa misma función, llamada N veces por una persona (§12.6, `REGLAS-DE-NEGOCIO.md` §1.9).
+**No existe ninguna ruta automática de plan o procedimiento a `Cargo`.** Todas las operaciones creadoras viven en el repositorio de Caja, exigen `caja:write` y nacen de una acción humana. El cobro planificado usa el `PlanItem` como unidad: cargo directo o calendario de cuotas, nunca ambos (ADR-017).
 
 > **Precisión conceptual (Ciclo 1): CLIDENT no decide cuándo nace una obligación jurídica.** Eso lo deciden el contrato, el consentimiento firmado, la ley y eventualmente un juez — un plan de ortodoncia firmado puede obligar desde el día de la firma, y el sistema no opina. **Lo que esta sección define es cuándo CLIDENT reconoce una cuenta por cobrar**, que es una afirmación de software y no de derecho de obligaciones. El comportamiento no cambia; la afirmación se acota a lo que le corresponde.
 
 > **"Saldo" a secas ya no existe: hay cuatro (§12.6, ADR-013).** El de esta tabla es el **exigible**. Con cuotas de ortodoncia registradas por adelantado, un `Σ(monto − aplicado)` sin calificar responde *"debe $1,080 hoy"* a un paciente que debe $60. **Registrarse no es lo mismo que vencer**, y el ADR-007 solo respondió lo primero.
 
-`@@unique([procedimientoId])` en `LineaCargo`: un procedimiento no se cobra dos veces.
+Un índice parcial permite como máximo un cargo directo vigente por `PlanItem`; el lock de fila serializa la elección entre cargo directo y calendario. Cada cuota cuelga del mismo `PlanItem`, y la suma del calendario debe coincidir exactamente con el total acordado.
 
 ## 12.2 Snapshots (ADR-006)
 
-`Tratamiento.precioListaCentavos` se lee **exactamente una vez**: al crear un `PlanItem`. Después, el precio es `PlanItem.precioUnitarioCentavos`.
+`Tratamiento.precioListaCentavos` se muestra como referencia. Al crear un `PlanItem`, el odontólogo elige el precio para ese paciente; después, la fuente de verdad es `PlanItem.precioUnitarioCentavos` y queda inmutable.
 
 **Cualquier join de `PlanItem`/`Procedimiento`/`LineaCargo` a `Tratamiento` para obtener un precio es un bug.** Cambiar el catálogo nunca altera un plan existente, **ni siquiera en `BORRADOR`**. También se congelan nombre y código.
 
@@ -917,7 +917,7 @@ El paciente acepta el plan      →  PlanTratamiento: ACEPTADO
 Caja crea el calendario         →  18 Cargo, cada uno con su fechaExigibleEn
 ```
 
-**Aceptar el plan no crea cargos. Nunca.** El calendario lo crea **una persona con `caja:write`**, expresamente, en una acción aparte y auditada por separado (`REGLAS-DE-NEGOCIO.md` §1.9). No existe una variante automática de `crearCargo()` para cuotas: es la misma función, llamada 18 veces por alguien que apretó un botón.
+**Aceptar el plan no crea cargos. Nunca.** El calendario lo crea **una persona con `caja:write`**, expresamente, en una acción aparte y auditada por separado (`REGLAS-DE-NEGOCIO.md` §1.9). Caja bloquea el `PlanItem` y crea las 18 filas atómicamente; Planes y Procedimientos no importan esa operación.
 
 **Por qué no se fusionan las dos acciones:** porque el odontólogo que acepta el plan en el sillón **no decide los términos financieros** — 18 cuotas o 24, con prima o sin prima, arrancando este mes o el otro. Eso se conversa en Caja. Fusionarlas haría que aceptar creara deuda registrada, y §12.1 se volvería falso justo en el caso más grande de la clínica.
 
@@ -1231,7 +1231,7 @@ Los roles se crean una sola vez por rama con `infra/bootstrap-roles.sql`, versio
 |---|---|
 | `agenda-overlap` | Solapamiento parcial (por inicio y por fin), cita contenida, contenedora, rangos idénticos → rechazan. **Adyacentes exactos (09:00–10:00 + 10:00–11:00) → permitido.** Odontólogo distinto → permitido. **Mismo paciente con dos odontólogos distintos a la misma hora → rechaza** (`citas_paciente_sin_traslape`). Cancelada no bloquea (en los dos constraints). Reprogramar hacia slot ocupado → rechaza. **Carrera:** dos inserts concurrentes → exactamente 1 éxito, 1 con `23P01`. |
 | `price-snapshot` | $100 → plan → catálogo a $150 → el ítem sigue en $100. **Ídem en `BORRADOR`.** Renombrar/desactivar → conserva nombre y código. Procedimiento cobrado: el catálogo no altera `LineaCargo` ni `Cargo`. |
-| `budget-is-not-debt` | Plan `BORRADOR` → saldo 0. Ítem `PROPUESTO` → saldo 0. **Plan `ACEPTADO` → sigue en 0, y `Cargo.count() === 0`.** Ítem `ACEPTADO` → 0. `COMPLETADO` → sigue en 0. `crearCargo()` → recién ahora saldo = monto. Pago parcial → `PARCIAL`. Sobrepago → rechaza. Doble cobro → `P2002`. |
+| `budget-is-not-debt` | Plan `BORRADOR` → saldo 0. Ítem `PROPUESTO` → saldo 0. **Plan `ACEPTADO` → sigue en 0, y `Cargo.count() === 0`.** Ítem `ACEPTADO` → 0. `COMPLETADO` → sigue en 0. Una acción humana de Caja → recién ahora saldo = monto. Tratamiento de $150 con varias sesiones → un solo cargo de $150. Pago parcial → `PARCIAL`. Sobrepago → rechaza. Segundo cobro → rechaza. |
 | `estados-plan` | **Transiciones válidas** (`REGLAS-DE-NEGOCIO.md` §4.5) → pasan. **`ACEPTADO` → `PRESENTADO` → rechazada.** **`COMPLETADO` → `CANCELADO` → rechazada.** `RECHAZADO` → `ANULADO` → pasa. `ANULADO` → cualquier cosa → rechazada. **Anular un plan con ítems en `COMPLETADO`, `ACEPTADO` y `PROPUESTO` → los tres conservan su estado exacto** (sin cascada). Ítem `ACEPTADO` → `COMPLETADO` directo (una sesión) → pasa. Tres sesiones registradas → el ítem sigue `EN_PROCESO` **hasta que un humano lo declare `COMPLETADO`**; ningún conteo lo mueve solo. |
 | `exigibilidad` | **18 cuotas de $60 cargadas hoy con vencimiento mensual → exigible = $60, total cargado = $1,080, vencido = $0, futuro = $1,020.** Al mes siguiente sin pagar → exigible $120, vencido $60. Pagar una cuota futura por adelantado → baja el futuro, no el exigible. Cargo anulado → sale de los cuatro. **El día exacto del vencimiento: exigible sí, vencido no.** **Plan `ACEPTADO` sin calendario creado → los cuatro en $0** (§12.6). **Anticipo de $300 sin aplicar → crédito a favor $300 y los cuatro de cargos no se mueven.** Cancelar la ortodoncia → anular las cuotas futuras impagas pasa directo; las pagadas exigen revertir primero. |
 | `dui-masking` | Listado como recepción → `duiEnmascarado` y **`'dui' in item === false`**. Como administrador → **tampoco** trae `dui`. Detalle como recepción → `FORBIDDEN`. Como odontólogo → DUI + auditoría. **`JSON.stringify` del payload de cualquier listado no contiene el DUI completo** (regex sobre el string serializado: atrapa fugas por spread o include). |
@@ -1283,13 +1283,13 @@ Ninguna bloquea el arranque. **Revisadas y ampliadas en la auditoría del Ciclo 
 | 7 | **Política de mora.** ¿Desde el día siguiente al vencimiento? ¿Días de gracia? La mecánica está (§12.6); el umbral es del propietario. | Fase 9 | Barato |
 | 8 | **RESUELTO en Ciclo 4B:** token aleatorio de un solo uso, almacenado únicamente como SHA-256, con 24 h de vigencia y consumo atómico al establecer una contraseña Argon2id. | Fase 1 | Resuelto |
 | 9 | **¿Cómo se devuelve el efectivo?** El sistema sabe reconocer crédito a favor (§12.4); **no existe entidad de dinero que sale**. | Antes de Fase 9 | **Migración de datos financieros** |
-| 10 | **Precio de una sesión.** `permiteMultiplesSesiones` existe; el precio por sesión **no está definido** — ver nota abajo. | Fase 7/8 | **Migración: `precioAplicadoCentavos` es inmutable** |
+| 10 | **RESUELTO en Ciclo 15 (ADR-017):** precio total acordado por paciente; primera sesión conserva el total, las demás 0; Caja cobra el `PlanItem` una vez. | Fase 7/8 | Resuelto |
 | 11 | **Paciente menor de edad.** Resuelto en el Ciclo 1 con columnas denormalizadas (§19 nota). Queda: **¿`numeroExpediente` correlativo por clínica?** Hoy un menor sin DUI no tiene identificador. | Fase 3 | Columna + backfill |
 | 12 | **Des-anular es posible en `procedimientos`, `cargos` Y `pagos`.** Un `CHECK` no puede impedir volver `anuladoEn` a `NULL` (§10.5). **Es de dinero:** des-anular un pago resucita el crédito de un cheque rebotado. Opciones: trigger (el proyecto no usa) o mover la anulación a tablas append-only. | **Antes de Fase 9** | **Migración: cambia la forma de la anulación** |
 | 15 | **`UNIQUE(procedimientoId)` en `LineaCargo` vs `lineas_cargo` append-only.** Hoy se contradicen: anular un cargo mal cobrado y recrearlo **falla con `23505`** — la línea del cargo anulado ocupa el slot único del procedimiento para siempre, y §12.5 manda anular-y-recrear como la vía normal de corregir un monto. Sin salida documentada salvo ensuciar el expediente clínico. | **Antes de Fase 9**, con #3 | **Sin arreglo barato: define la forma de `LineaCargo`** |
 | 16 | **¿Cómo se nombra "las cuotas de esta ortodoncia"?** Los 18 cargos no tienen columna que los agrupe (§12.6 descartó `PlanDePagos`). Cancelar la ortodoncia obliga a identificarlos a ojo, y "cargos futuros del paciente" también agarra la corona. **Y hay algo peor: sin agrupador no se puede cerrar el #18.** Opción aditiva: `grupoCuotasId` + `cuotaNumero`, o colgar los cargos del `PlanItem`. | **Antes de Fase 9** | **Backfill irreconstruible** |
 | 17 | **Las transiciones de estado no tienen mecanismo en la base.** `ACEPTADO → PRESENTADO`, `COMPLETADO → CANCELADO` y la no-cascada de §4.6 los hace cumplir **la aplicación**, no PostgreSQL: un `CHECK` no ve el valor anterior (mismo límite que #12). También `plan_item_dientes` permite borrarle dientes a un plan ya aceptado. Opciones: triggers, o mover las transiciones a tabla append-only. | Fase 7 | Migración |
-| 18 | **La ortodoncia tiene DOS canales de cobro y nadie los reconcilia.** Los 18 cargos de cuota nacen del calendario; las activaciones mensuales generan `Procedimiento` que **aparecen en "realizados sin cargo"** (§12.1) y la cajera los traslada. **`@@unique([procedimientoId])` no lo detecta**: cada procedimiento se cobró una sola vez. **Resultado: se cobra dos veces el mismo tratamiento**, y la única defensa hoy es que la cajera se acuerde. | **Antes de Fase 9** | **Migración financiera + cobros dobles ya hechos** |
+| 18 | **RESUELTO en Ciclo 15 (ADR-017):** cargo directo y cuotas comparten `planItemId`; un lock y las validaciones impiden ambos canales simultáneos. | **Antes de Fase 9** | Resuelto |
 | 19 | **Una cuota con fecha mal tecleada no la atrapa nada.** `NOT NULL` cubre la fecha *ausente*; la fecha *equivocada* (2027 en vez de 2026 en la cuota 7) pasa todos los `CHECK`, no sale en mora —nunca vence— y la clínica cobra $1,020 de $1,080 sin que ningún reporte lo diga. Opción: `CHECK` de rango + confirmación obligatoria que muestre las 18 fechas. | Fase 9 | Barato |
 | 13 | **¿`planItemId` inmutable?** Está declarado inmutable (§10.5). "Olvidé enlazar el procedimiento al plan" obliga a anular y recrear. **¿Esa rigidez estorba en la práctica?** | Fase 8 | Un `GRANT` |
 | 14 | **Verificación empírica: ¿una columna generada puede ser destino de una FK?** De eso depende el diseño de reversas (§12.4). Los docs de PostgreSQL no lo dicen. | **Fase 0** | Rediseño de reversas |
@@ -1316,15 +1316,15 @@ Era una pendiente hasta el Ciclo 1. Ya no: `Cargo.fechaExigibleEn` + cuatro sald
 
 `Tratamiento.permitePlanDePagos` **se quitó** (§10.4): era una bandera booleana sin punto de aplicación, y el mecanismo real vive en Caja, no en el catálogo.
 
-### #10 — Precio de una sesión: el modelo aguanta, el dinero no
+### #10 — Precio de una sesión — **RESUELTO en el Ciclo 15 (ADR-017)**
 
 Estructuralmente las sesiones están bien: `PlanItem ||--o{ Procedimiento` (0..N sesiones) es exactamente lo correcto, y `permiteMultiplesSesiones` existe.
 
-**Financieramente no cierra.** Endodoncia de $150 en 3 sesiones: cada `Procedimiento` lleva `precioAplicadoCentavos`, y **ningún documento dice cuánto vale cada sesión.** Si copia el precio del `PlanItem`, son 3 × $150 = **$450 cobrables por un tratamiento de $150**. Caja ve tres filas en "realizados sin cargo" y el cajero crea tres cargos. Y `@@unique([procedimientoId])` **no lo detecta**: son tres procedimientos distintos, cada uno cobrado una sola vez. La regla "no se cobra dos veces" se cumple al pie de la letra mientras el paciente paga el triple.
+Carlos decidió que el odontólogo define un precio total distinto para cada paciente al preparar el plan. Una endodoncia acordada en $150 cuesta $150 aunque tenga tres sesiones.
 
-Opciones incompatibles entre sí: (a) el precio va en la sesión 1 y las demás en $0; (b) se reparte $50/$50/$50; (c) `LineaCargo` cuelga del `PlanItem` y no del `Procedimiento` (la relación ya es opcional, la puerta está entreabierta).
+La primera sesión conserva el total como snapshot clínico y las siguientes van en $0. Caja lista y cobra el `PlanItem` una sola vez, o crea cuotas cuya suma debe ser exactamente el total acordado.
 
-**Por qué es caro tarde:** `precioAplicadoCentavos` es **inmutable** (§10.5). Si nace con la semántica equivocada, no se edita: hay que anular y recrear cada procedimiento, y los ya cobrados arrastran el problema #9.
+La base protege la concurrencia con un lock del `PlanItem` y dos índices parciales: un cargo directo vigente y una sesión con precio positivo como máximos.
 
 **Cabos sueltos del mismo caso:** no existen `sesionNumero` ni `totalSesiones`, y el criterio de salida de la Fase 8 dice que realizar un procedimiento *"avanza el plan"* — con 3 sesiones, **"avanzar" no está definido**: nadie dice cuándo el `PlanItem` pasa a completado.
 

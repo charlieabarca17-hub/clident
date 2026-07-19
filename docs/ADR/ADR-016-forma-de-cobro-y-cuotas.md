@@ -1,12 +1,16 @@
 # ADR-016 — Forma del cobro, cuotas y resolución de las pendientes de Caja
 
-- **Estado:** Aceptado
+- **Estado:** Aceptado — superseded parcialmente por ADR-017 (#18 y unidad de cobro)
 - **Fecha:** 2026-07-18
 - **Ciclo:** Fase 9
 - **Decidido por:** Carlos (pendiente #3 y aplazamientos); mecanismos por diseño
 - **Relacionado:** ADR-006, ADR-007, ADR-009, ADR-012, ADR-013
 
 ## Contexto
+
+> **Actualización, ADR-017:** el filtro de #18 se convirtió en un candado real:
+> cargo directo y cuotas comparten el `PlanItem`, y las sesiones ya no son
+> unidades cobrables independientes.
 
 ARQUITECTURA §19 marcaba ocho decisiones "antes de Fase 9". Carlos resolvió la
 tributaria/comercial (#3) y confirmó tres aplazamientos (#2, #7, #9). Las demás

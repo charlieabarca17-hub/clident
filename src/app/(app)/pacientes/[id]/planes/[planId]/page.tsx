@@ -245,8 +245,8 @@ export default async function PlanPage({ params }: PlanPageProps) {
           <section className="rounded-2xl border bg-card p-5 shadow-sm">
             <h2 className="text-lg font-semibold">Agregar tratamiento</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              El precio del catálogo se copia al plan en este momento y queda congelado:
-              cambios futuros del catálogo no tocan este presupuesto.
+              El catálogo muestra una referencia. Vos decidís el precio para este paciente y,
+              al agregarlo, queda congelado en el plan.
             </p>
             <form action={agregarPlanItemDesdeFormulario} className="mt-4 space-y-4">
               <input type="hidden" name="pacienteId" value={paciente.id} />
@@ -274,6 +274,12 @@ export default async function PlanPage({ params }: PlanPageProps) {
                     ))}
                   </select>
                   <span className="mt-1 block text-xs font-normal text-muted-foreground">Obligatorio si el tratamiento lo exige (endodoncias, cirugía periodontal…).</span>
+                </label>
+                <label className="block text-sm font-medium">Precio para este paciente (USD) *
+                  <input name="precioAcordado" required inputMode="decimal" placeholder="150.00" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                    Es el precio total del tratamiento, aunque necesite varias sesiones.
+                  </span>
                 </label>
                 <label className="block text-sm font-medium">Descuento (USD)
                   <input name="descuento" inputMode="decimal" placeholder="0.00" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />

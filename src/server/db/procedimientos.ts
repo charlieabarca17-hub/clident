@@ -79,7 +79,8 @@ async function sucursalPredeterminada(tx: TenantTransaction, clinicaId: string):
 
 /**
  * Registra el hecho clínico. Efectos en LA MISMA transacción:
- * 1. Fila inmutable de procedimiento (snapshot de tratamiento y precio del ítem).
+ * 1. Fila inmutable de procedimiento. La primera sesión conserva el precio
+ *    total acordado; las siguientes valen $0 porque ya están incluidas.
  * 2. Dientes append-only.
  * 3. Eventos PROCEDIMIENTO_REALIZADO en el odontograma (camino aditivo).
  * 4. El plan avanza: ACEPTADO → EN_PROCESO en la primera sesión.
@@ -101,6 +102,11 @@ export async function realizarProcedimiento(
         tratamientoNombre: true,
         precioUnitarioCentavos: true,
         descuentoCentavos: true,
+        procedimientos: {
+          where: { estado: "REALIZADO", precioAplicadoCentavos: { gt: 0 } },
+          select: { id: true },
+          take: 1,
+        },
         plan: { select: { estado: true, pacienteId: true } },
         // Banderas del catálogo: comportamiento, NUNCA precio (ADR-006).
         tratamiento: {
@@ -146,6 +152,14 @@ export async function realizarProcedimiento(
       throw new Error("Este tratamiento admite una sola superficie.");
     }
 
+    // ADR-017: el precio es del tratamiento completo, no de cada sesión. Si la
+    // primera sesión fue anulada, la próxima sesión vigente vuelve a conservar
+    // el total. El índice parcial cierra la carrera entre dos inserciones.
+    const precioSesionCentavos =
+      planItem.procedimientos.length === 0
+        ? planItem.precioUnitarioCentavos - planItem.descuentoCentavos
+        : 0;
+
     const creado = await tx.procedimiento.create({
       data: {
         clinicaId: ctx.clinicaId,
@@ -153,14 +167,12 @@ export async function realizarProcedimiento(
         pacienteId: input.pacienteId,
         planItemId: planItem.id,
         odontologoId: ctx.membresiaId,
-        // Snapshots del ÍTEM (que ya congeló el catálogo en la Fase 7): el
-        // precio aplicado nace del precio final que el paciente aceptó.
-        // Cuánto vale cada sesión de un multi-sesión es la pendiente #10;
-        // mientras se decide, cada sesión registra el precio del ítem.
+        // La primera sesión lleva el total acordado como snapshot histórico;
+        // las demás quedan incluidas y no multiplican el valor del tratamiento.
         tratamientoId: planItem.tratamientoId,
         tratamientoCodigo: planItem.tratamientoCodigo,
         tratamientoNombre: planItem.tratamientoNombre,
-        precioAplicadoCentavos: planItem.precioUnitarioCentavos - planItem.descuentoCentavos,
+        precioAplicadoCentavos: precioSesionCentavos,
         realizadoEn: input.realizadoEn,
         notasClinicas: input.notasClinicas,
         creadoPorId: ctx.membresiaId,

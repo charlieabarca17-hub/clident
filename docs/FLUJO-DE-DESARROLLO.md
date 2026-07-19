@@ -124,6 +124,9 @@ Antes de reportar, releé tu diff y respondé cada una:
 **Dinero**
 - [ ] ¿Todo monto es `Int` en centavos y termina en `Centavos`?
 - [ ] ¿Hay algún join a `Tratamiento` para obtener un precio de algo ya creado? **(bug)**
+- [ ] ¿El precio del catálogo se impone al paciente en vez de ser solo una referencia? **(bug: el odontólogo fija el precio del `PlanItem`)**
+- [ ] ¿Un tratamiento multisesión puede generar un cargo por sesión? **(bug: se cobra una vez por `PlanItem`)**
+- [ ] ¿La suma de cuotas difiere del total acordado? **(bug)**
 - [ ] ¿Algo crea un `Cargo` fuera del módulo de Caja? **(bug)**
 - [ ] ¿Aceptar un `PlanTratamiento` o un `PlanItem` crea cargos? **(bug: la aceptación y el calendario son dos acciones)**
 - [ ] ¿Se escribió una variante automática de `crearCargo()` "para cuotas"? **(bug: es la excepción que se come la regla)**
@@ -205,9 +208,9 @@ Estas cosas **no se implementan y después se muestran**. Se proponen, se discut
 | **4. Catálogo** | Categorías, tratamientos, semilla de plantillas, `clonarCatalogo()`, CRUD con banderas. | Sin tratamientos duplicados por superficie. |
 | **5. Diagnósticos** | `Diagnostico`, `DiagnosticoDiente`, selector de alcance, picker multi-diente/multi-superficie. | Un dx con 3 dientes y 5 superficies se guarda y se lee. |
 | **6. Odontograma** | Eventos, proyección, `reducer.ts`, `rebuild.ts`, SVG 32+20, timeline, anulación **recalculada** (§10.1). | **Equivalencia de caminos verde** (el rebuild no cambia lo que escribió el camino en vivo); ningún evento se pierde. |
-| **7. Planes** | Planes, ítems, snapshot al crear, estados independientes (enums en `REGLAS-DE-NEGOCIO.md` §4.4). | **Prueba de precio congelado verde.** |
+| **7. Planes** | Planes, ítems, precio acordado por paciente y snapshot al crear, estados independientes (enums en `REGLAS-DE-NEGOCIO.md` §4.4). | **Prueba de precio libre y congelado verde.** |
 | **8. Procedimientos** | Procedimientos, enmiendas, anulación, generación de eventos, ventana de gracia. **Migración SQL: `REVOKE UPDATE ON procedimientos` + `GRANT UPDATE (columnas mutables)`** — en ese orden (ADR-012). | Realizar un procedimiento pinta el odontograma y avanza el plan. **Un `UPDATE` del precio aplicado → *permission denied*.** |
-| **9. Caja** | Cargos, líneas, pagos, aplicaciones. **Dos contadores + dos `CHECK`** (cargo y pago). Anulación de `Pago`. Reversas negativas (solo completas). **`fechaExigibleEn` + los cuatro saldos (ADR-013).** Lista "realizados sin cargo". Pagos parciales. `DocumentoFiscal` vacío + `NoopDteProvider`. | **Prueba presupuesto≠deuda verde.** **18 cuotas de $60 → exigible $60, no $1,080.** Saldos cuadran. **Reconciliación (§13.4): las consultas #1, #2 y #3 en cero, corriendo con `clident_migrator`.** (La #4 entra al criterio cuando se resuelva la pendiente #3.) |
+| **9. Caja** | Cargos, líneas, pagos, aplicaciones. **Un cobro por `PlanItem` o cuotas por exactamente el mismo total.** Dos contadores + dos `CHECK` (cargo y pago). Anulación de `Pago`. Reversas negativas (solo completas). **`fechaExigibleEn` + los cuatro saldos (ADR-013).** Lista de tratamientos realizados sin cargo. Pagos parciales. `DocumentoFiscal` vacío + `NoopDteProvider`. | **Prueba presupuesto≠deuda verde.** **18 cuotas de $60 → exigible $60, no $1,080.** **Tratamiento de $150 en varias sesiones → total cargado $150.** Saldos cuadran. |
 | **10. Inventario** | Materiales, movimientos, alertas, estado vacío. | Movimientos append-only. |
 | **11. Dashboard + Historial** | KPIs reales. Timeline clínico unificado. | Carlos ve el flujo completo de un paciente en una pantalla. |
 | **12. Endurecimiento + Responsividad** | Cobertura, `npm audit`, rate limit en login, respaldos, ADRs, revisión de permisos. Responsividad en desktop/laptop/tablet/móvil. | Todo verde en CI. Sin scroll horizontal innecesario. |

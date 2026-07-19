@@ -1,10 +1,15 @@
 # ADR-007 — La cuenta por cobrar se registra exclusivamente en `Cargo`
 
-- **Estado:** Aceptado — **superseded PARCIALMENTE por [ADR-013](ADR-013-exigibilidad-de-cargos.md)** (solo la definición de "saldo pendiente")
+- **Estado:** Aceptado — **superseded PARCIALMENTE por [ADR-013](ADR-013-exigibilidad-de-cargos.md)** (saldo) **y [ADR-017](ADR-017-precio-acordado-y-cobro-unico.md)** (unidad de cobro planificada)
 - **Fecha:** 2026-07-17
 - **Ciclo:** 0
 
-> **Qué sigue vigente de este ADR: todo lo importante.** Solo `crearCargo()` incorpora una obligación a las cuentas, desde Caja, invocada por un humano; presupuestar, aceptar y realizar **no** lo hacen; no hay ruta automática. Nada de eso cambió, y nada de eso debe cambiar.
+> **Qué sigue vigente de este ADR: todo lo importante.** Solo las operaciones de creación de `Cargo` del módulo Caja incorporan una obligación a las cuentas, invocadas por un humano; presupuestar, aceptar y realizar **no** lo hacen; no hay ruta automática. Nada de eso cambió, y nada de eso debe cambiar.
+>
+> **Precisión del Ciclo 15 (ADR-017).** Para tratamientos planificados, Caja
+> cobra el `PlanItem` una sola vez —directo o en cuotas— y ya no cada
+> `Procedimiento`. La lista de trabajo muestra tratamientos realizados sin
+> cargo, una fila aunque existan varias sesiones.
 >
 > **Precisión conceptual (Ciclo 1).** Este ADR se llamaba *"La deuda nace exclusivamente en `Cargo`"* y afirmaba que *"la deuda existe **si y solo si** existe una fila de `Cargo`"*. **Eso era una afirmación jurídica que a CLIDENT no le toca hacer.** Cuándo nace una obligación entre la clínica y el paciente lo deciden el contrato, el consentimiento firmado, la ley y eventualmente un juez — un plan de ortodoncia firmado puede obligar desde el día de la firma, y ningún software cambia eso. **Lo que este ADR decide, y lo único que puede decidir, es cuándo CLIDENT reconoce una cuenta por cobrar.** El comportamiento del sistema es idéntico; la afirmación se acota a su competencia. *(El nombre del archivo se conserva para no romper enlaces.)*
 >

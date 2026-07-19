@@ -3,7 +3,7 @@ import Link from "next/link";
 import { formatearUSD } from "@/lib/money";
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso } from "@/server/auth/permissions";
-import { listarRealizadosSinCargo } from "@/server/db/caja";
+import { listarTratamientosRealizadosSinCargo } from "@/server/db/caja";
 import { buscarPacientes } from "@/server/db/pacientes";
 
 type CajaPageProps = { searchParams: Promise<{ q?: string }> };
@@ -24,7 +24,7 @@ export default async function CajaPage({ searchParams }: CajaPageProps) {
   requirePermiso(ctx, "caja:read");
 
   const [pendientes, pacientes] = await Promise.all([
-    listarRealizadosSinCargo(ctx),
+    listarTratamientosRealizadosSinCargo(ctx),
     termino.length >= 2 ? buscarPacientes(ctx, termino) : Promise.resolve([]),
   ]);
 
@@ -65,7 +65,7 @@ export default async function CajaPage({ searchParams }: CajaPageProps) {
         <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
           <header className="border-b bg-muted px-5 py-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Procedimientos realizados sin cargo
+              Tratamientos realizados sin cargo
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Lista de trabajo: un humano decide qué se cobra. Los tratamientos con calendario
@@ -73,7 +73,7 @@ export default async function CajaPage({ searchParams }: CajaPageProps) {
             </p>
           </header>
           {pendientes.length === 0 ? (
-            <p className="p-8 text-center text-sm text-muted-foreground">No hay procedimientos pendientes de cobro.</p>
+            <p className="p-8 text-center text-sm text-muted-foreground">No hay tratamientos pendientes de cobro.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
@@ -82,19 +82,19 @@ export default async function CajaPage({ searchParams }: CajaPageProps) {
                     <th className="px-5 py-3 font-medium">Fecha</th>
                     <th className="px-5 py-3 font-medium">Paciente</th>
                     <th className="px-5 py-3 font-medium">Tratamiento</th>
-                    <th className="px-5 py-3 text-right font-medium">Precio aplicado</th>
+                    <th className="px-5 py-3 text-right font-medium">Total acordado</th>
                     <th className="px-5 py-3 font-medium" />
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {pendientes.map((procedimiento) => (
-                    <tr key={procedimiento.id}>
-                      <td className="whitespace-nowrap px-5 py-3">{fechaCorta(procedimiento.realizadoEn)}</td>
-                      <td className="px-5 py-3 font-medium">{procedimiento.pacienteNombre}</td>
-                      <td className="px-5 py-3">{procedimiento.tratamientoNombre}</td>
-                      <td className="px-5 py-3 text-right font-mono">{formatearUSD(procedimiento.precioAplicadoCentavos)}</td>
+                  {pendientes.map((tratamiento) => (
+                    <tr key={tratamiento.id}>
+                      <td className="whitespace-nowrap px-5 py-3">{fechaCorta(tratamiento.realizadoEn)}</td>
+                      <td className="px-5 py-3 font-medium">{tratamiento.pacienteNombre}</td>
+                      <td className="px-5 py-3">{tratamiento.tratamientoNombre}</td>
+                      <td className="px-5 py-3 text-right font-mono">{formatearUSD(tratamiento.precioAcordadoCentavos)}</td>
                       <td className="px-5 py-3 text-right">
-                        <Link href={`/caja/${procedimiento.pacienteId}`} className="font-medium text-foreground underline-offset-4 hover:underline">Cobrar</Link>
+                        <Link href={`/caja/${tratamiento.pacienteId}`} className="font-medium text-foreground underline-offset-4 hover:underline">Cobrar</Link>
                       </td>
                     </tr>
                   ))}

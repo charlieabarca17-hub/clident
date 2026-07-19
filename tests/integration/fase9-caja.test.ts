@@ -13,8 +13,9 @@ import {
   aplicarPago,
   crearCalendarioCuotas,
   crearCargo,
+  crearCargoDePlan,
   getEstadoCuenta,
-  listarRealizadosSinCargo,
+  listarTratamientosRealizadosSinCargo,
   registrarPago,
   reversarAplicacion,
 } from "@/server/db/caja";
@@ -115,8 +116,12 @@ async function rechaza(promesa: Promise<unknown>, sqlstate?: string): Promise<vo
 let clinica: Bootstrap;
 let ctx: TenantContext;
 let pacienteId: string;
+let itemResinaId: string;
 let itemOrtodonciaId: string;
 let procedimientoResinaId: string;
+let pacienteMultisesionId: string;
+let itemMultisesionId: string;
+let preciosSesiones: number[];
 
 beforeAll(async () => {
   clinica = await crearClinica("Caja A", "caja-a@clident.test");
@@ -154,22 +159,25 @@ beforeAll(async () => {
     planId: plan!.id,
     tratamientoId: resinaId,
     diagnosticoId: null,
-    descuentoCentavos: 0,
+    precioAcordadoCentavos: 4500,
+    descuentoCentavos: 500,
     dientes: [{ fdi: 26, superficie: "OCLUSAL" }],
   });
   const conItems = await agregarPlanItem(ctx, {
     planId: plan!.id,
     tratamientoId: brackets,
     diagnosticoId: null,
+    precioAcordadoCentavos: 108000,
     descuentoCentavos: 0,
     dientes: [],
   });
   const [itemResina, itemOrto] = conItems!.items;
+  itemResinaId = itemResina.id;
   itemOrtodonciaId = itemOrto.id;
   await presentarPlan(ctx, plan!.id);
   await aceptarPlan(ctx, { planId: plan!.id, itemIds: [itemResina.id, itemOrto.id] });
 
-  const procedimiento = await realizarProcedimiento(ctx, {
+  const procedimientoResina = await realizarProcedimiento(ctx, {
     pacienteId,
     planItemId: itemResina.id,
     realizadoEn: new Date(),
@@ -177,7 +185,55 @@ beforeAll(async () => {
     condicionResultante: "OBTURACION",
     dientes: [{ fdi: 26, superficie: "OCLUSAL" }],
   });
-  procedimientoResinaId = procedimiento!.id;
+  procedimientoResinaId = procedimientoResina!.id;
+
+  const pacienteMultisesion = await crearPaciente(
+    { ...ctx, roles: ["RECEPCION"] },
+    CrearPacienteSchema.parse({
+      nombres: "Paciente",
+      apellidos: "Multisesión",
+      fechaNacimiento: "1992-06-20",
+      dui: "",
+      telefono: "7400-0010",
+      correo: "",
+      direccion: "",
+      responsable: null,
+      contactoEmergencia: { nombre: "Contacto", telefono: "7400-0011" },
+    }),
+  );
+  pacienteMultisesionId = pacienteMultisesion.id;
+  const planMultisesion = await crearPlan(ctx, {
+    pacienteId: pacienteMultisesionId,
+    titulo: "Tratamiento de $150 total",
+  });
+  const conTratamiento = await agregarPlanItem(ctx, {
+    planId: planMultisesion!.id,
+    tratamientoId: brackets,
+    diagnosticoId: null,
+    precioAcordadoCentavos: 15000,
+    descuentoCentavos: 0,
+    dientes: [],
+  });
+  itemMultisesionId = conTratamiento!.items[0].id;
+  await presentarPlan(ctx, planMultisesion!.id);
+  await aceptarPlan(ctx, { planId: planMultisesion!.id, itemIds: [itemMultisesionId] });
+  const primera = await realizarProcedimiento(ctx, {
+    pacienteId: pacienteMultisesionId,
+    planItemId: itemMultisesionId,
+    realizadoEn: new Date(),
+    notasClinicas: "Primera sesión.",
+    condicionResultante: null,
+    dientes: [],
+  });
+  const segunda = await realizarProcedimiento(ctx, {
+    pacienteId: pacienteMultisesionId,
+    planItemId: itemMultisesionId,
+    realizadoEn: new Date(),
+    notasClinicas: "Segunda sesión incluida.",
+    condicionResultante: null,
+    dientes: [],
+  });
+  preciosSesiones = [primera!.precioAplicadoCentavos, segunda!.precioAplicadoCentavos];
 });
 
 afterAll(async () => {
@@ -193,36 +249,72 @@ describe("presupuesto ≠ deuda — criterio de salida", () => {
   });
 
   it("el procedimiento aparece en la lista de trabajo esperando decisión humana", async () => {
-    const pendientes = await listarRealizadosSinCargo(ctx);
-    expect(pendientes.some((p) => p.id === procedimientoResinaId)).toBe(true);
+    const pendientes = await listarTratamientosRealizadosSinCargo(ctx);
+    expect(pendientes.some((p) => p.id === itemResinaId)).toBe(true);
   });
 });
 
-describe("cargo con descuento de mostrador y doble cobro imposible", () => {
-  it("cobra el procedimiento con descuento y el CHECK verifica la aritmética", async () => {
-    const cargo = await crearCargo(ctx, {
-      pacienteId,
-      descripcion: "Cobro de resina",
+describe("tratamiento multisesión con precio total por paciente", () => {
+  it("$150 acordados se cobran una sola vez y no $150 por cada sesión", async () => {
+    expect(preciosSesiones).toEqual([15000, 0]);
+
+    const pendientes = await listarTratamientosRealizadosSinCargo(ctx, pacienteMultisesionId);
+    expect(pendientes.filter((p) => p.id === itemMultisesionId)).toHaveLength(1);
+    expect(pendientes.find((p) => p.id === itemMultisesionId)!.precioAcordadoCentavos).toBe(15000);
+
+    const cargo = await crearCargoDePlan(ctx, {
+      pacienteId: pacienteMultisesionId,
+      planItemId: itemMultisesionId,
       fechaExigibleEn: hoyElSalvador(),
-      lineas: [
-        {
-          procedimientoId: procedimientoResinaId,
-          descripcion: null,
-          precioOriginalCentavos: 4500,
-          descuentoCentavos: 500,
-        },
-      ],
+    });
+    expect(cargo!.montoCentavos).toBe(15000);
+
+    await expect(
+      crearCargoDePlan(ctx, {
+        pacienteId: pacienteMultisesionId,
+        planItemId: itemMultisesionId,
+        fechaExigibleEn: hoyElSalvador(),
+      }),
+    ).rejects.toThrow(/ya tiene un cobro vigente/i);
+
+    await expect(
+      crearCalendarioCuotas(ctx, {
+        pacienteId: pacienteMultisesionId,
+        planItemId: itemMultisesionId,
+        montoCuotaCentavos: 5000,
+        fechas: generarFechasCuotasMensuales(hoyElSalvador(), 3),
+      }),
+    ).rejects.toThrow(/ya tiene un cobro vigente/i);
+  });
+});
+
+describe("precio acordado en el plan y doble cobro imposible", () => {
+  it("cobra una sola vez el total acordado por dentista", async () => {
+    const cargo = await crearCargoDePlan(ctx, {
+      pacienteId,
+      planItemId: itemResinaId,
+      fechaExigibleEn: hoyElSalvador(),
     });
     expect(cargo!.montoCentavos).toBe(4000);
     expect(cargo!.lineas[0].descuentoCentavos).toBe(500);
     expect(cargo!.estado).toBe("PENDIENTE");
   });
 
-  it("el segundo cobro del mismo procedimiento no encuentra slot", async () => {
+  it("el segundo cobro del mismo tratamiento se rechaza", async () => {
+    await expect(
+      crearCargoDePlan(ctx, {
+        pacienteId,
+        planItemId: itemResinaId,
+        fechaExigibleEn: hoyElSalvador(),
+      }),
+    ).rejects.toThrow(/ya tiene un cobro vigente/i);
+  });
+
+  it("el flujo anterior no permite cobrar una sesión por separado", async () => {
     await expect(
       crearCargo(ctx, {
         pacienteId,
-        descripcion: "Doble cobro",
+        descripcion: "Intento por sesión",
         fechaExigibleEn: hoyElSalvador(),
         lineas: [
           {
@@ -233,7 +325,7 @@ describe("cargo con descuento de mostrador y doble cobro imposible", () => {
           },
         ],
       }),
-    ).rejects.toThrow(/ya está cobrado/i);
+    ).rejects.toThrow(/se cobran por PlanItem/i);
   });
 
   it("la línea con aritmética rota la rechaza la base aunque la app se salte Zod", async () => {
@@ -280,11 +372,11 @@ describe("las 18 cuotas — criterio de salida", () => {
         montoCuotaCentavos: 6000,
         fechas: generarFechasCuotasMensuales(hoyElSalvador(), 3),
       }),
-    ).rejects.toThrow(/ya tiene un calendario/i);
+    ).rejects.toThrow(/ya tiene un cobro vigente/i);
   });
 
   it("con cuotas vigentes, la activación de ortodoncia NO aparece en la lista de trabajo", async () => {
-    const procedimiento = await realizarProcedimiento(ctx, {
+    await realizarProcedimiento(ctx, {
       pacienteId,
       planItemId: itemOrtodonciaId,
       realizadoEn: new Date(),
@@ -292,8 +384,8 @@ describe("las 18 cuotas — criterio de salida", () => {
       condicionResultante: null,
       dientes: [],
     });
-    const pendientes = await listarRealizadosSinCargo(ctx);
-    expect(pendientes.some((p) => p.id === procedimiento!.id)).toBe(false);
+    const pendientes = await listarTratamientosRealizadosSinCargo(ctx);
+    expect(pendientes.some((p) => p.id === itemOrtodonciaId)).toBe(false);
   });
 
   it("una cuota con fecha absurda la rechaza el CHECK de rango", async () => {
@@ -333,7 +425,7 @@ describe("pagos, aplicaciones y los dos contadores", () => {
 
   it("aplicar mueve los dos contadores y el estado del cargo", async () => {
     const cuenta = await getEstadoCuenta(ctx, pacienteId);
-    cargoResinaId = cuenta!.cargos.find((c) => c.descripcion === "Cobro de resina")!.id;
+    cargoResinaId = cuenta!.cargos.find((c) => c.planItemId === itemResinaId)!.id;
 
     await aplicarPago(ctx, { pagoId, cargoId: cargoResinaId, montoCentavos: 2500 });
     let relegida = (await getEstadoCuenta(ctx, pacienteId))!;
@@ -420,8 +512,8 @@ describe("pagos, aplicaciones y los dos contadores", () => {
     expect(anulado).not.toBeNull();
 
     // El procedimiento quedó libre y vuelve a la lista de trabajo (ADR-016 #15).
-    const pendientes = await listarRealizadosSinCargo(ctx);
-    expect(pendientes.some((p) => p.id === procedimientoResinaId)).toBe(true);
+    const pendientes = await listarTratamientosRealizadosSinCargo(ctx);
+    expect(pendientes.some((p) => p.id === itemResinaId)).toBe(true);
   });
 
   it("anular un pago exige contador en cero", async () => {
