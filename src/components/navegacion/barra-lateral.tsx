@@ -14,7 +14,7 @@ export type GrupoNavegacion = { titulo: string; enlaces: EnlaceNavegacion[] };
  * el menú abre con un <details> nativo: sin estado de React, sin JavaScript
  * propio, y funciona igual si el script no cargó.
  *
- * Identidad visual: fondo ciruela con un arco rosa marcando la sección activa.
+ * Identidad visual: fondo verde profundo con un arco menta marcando la sección activa.
  * El arco no es decoración suelta — es la misma idea que el odontograma en arco
  * anatómico: la anatomía vive en la estructura, no en ilustraciones pegadas.
  */
@@ -45,7 +45,7 @@ export function BarraLateral({ grupos, clinica }: { grupos: GrupoNavegacion[]; c
                         : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                     }`}
                   >
-                    {/* El arco: un trazo rosa curvo sobre el borde izquierdo. Es
+                    {/* El arco: un trazo menta curvo sobre el borde izquierdo. Es
                         `aria-hidden` porque `aria-current="page"` ya comunica cuál
                         es la sección activa a un lector de pantalla — y porque la
                         marca no puede depender sólo del color (ver leyenda del
@@ -80,7 +80,7 @@ export function BarraLateral({ grupos, clinica }: { grupos: GrupoNavegacion[]; c
   const marca = (tamano: "escritorio" | "movil") => (
     <>
       <span
-        className={`block font-semibold tracking-tight text-sidebar-accent-foreground ${
+        className={`block font-semibold tracking-tight text-sidebar-foreground ${
           tamano === "escritorio" ? "text-lg" : "text-base"
         }`}
       >
