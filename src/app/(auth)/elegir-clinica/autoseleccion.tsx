@@ -18,7 +18,7 @@ export function AutoseleccionClinica({
   return (
     <form action={seleccionar} ref={formulario} className="mt-6">
       <input type="hidden" name="clinicaId" value={clinicaId} />
-      <p role="status" className="rounded-lg bg-neutral-50 p-4 text-sm text-neutral-600">
+      <p role="status" className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">
         Preparando tu clínica…
       </p>
       <button className="mt-4 w-full rounded-lg border px-4 py-2 text-sm font-medium">

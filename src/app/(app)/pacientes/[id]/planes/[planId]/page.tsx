@@ -31,12 +31,12 @@ const ETIQUETA_PLAN: Record<string, string> = {
 };
 
 const ETIQUETA_ITEM: Record<string, { texto: string; clase: string }> = {
-  PROPUESTO: { texto: "Propuesto", clase: "bg-neutral-100 text-neutral-700" },
-  ACEPTADO: { texto: "Aceptado", clase: "bg-emerald-50 text-emerald-700" },
-  EN_PROCESO: { texto: "En proceso", clase: "bg-sky-50 text-sky-700" },
-  COMPLETADO: { texto: "Completado", clase: "bg-emerald-100 text-emerald-800" },
-  CANCELADO: { texto: "Cancelado", clase: "bg-orange-50 text-orange-700" },
-  ANULADO: { texto: "Anulado", clase: "bg-red-50 text-red-700" },
+  PROPUESTO: { texto: "Propuesto", clase: "bg-muted text-foreground" },
+  ACEPTADO: { texto: "Aceptado", clase: "bg-exito-suave text-exito-texto" },
+  EN_PROCESO: { texto: "En proceso", clase: "bg-secondary text-secondary-foreground" },
+  COMPLETADO: { texto: "Completado", clase: "bg-exito-suave text-exito-texto" },
+  CANCELADO: { texto: "Cancelado", clase: "bg-advertencia-suave text-foreground" },
+  ANULADO: { texto: "Anulado", clase: "bg-destructive/10 text-destructive" },
 };
 
 const FILAS_DIENTES = 10;
@@ -54,15 +54,15 @@ function FormularioMotivo({
 }) {
   return (
     <details className="text-sm">
-      <summary className={`cursor-pointer font-medium ${clase ?? "text-neutral-700"}`}>{etiqueta}</summary>
+      <summary className={`cursor-pointer font-medium ${clase ?? "text-foreground"}`}>{etiqueta}</summary>
       <form action={action} className="mt-2 w-64 space-y-2">
         {Object.entries(campos).map(([nombre, valor]) => (
           <input key={nombre} type="hidden" name={nombre} value={valor} />
         ))}
-        <label className="block text-xs font-medium text-neutral-700">Motivo
+        <label className="block text-xs font-medium text-foreground">Motivo
           <textarea name="motivo" required maxLength={1000} rows={2} className="mt-1 w-full rounded-lg border px-2 py-1.5 font-normal" />
         </label>
-        <button className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-800">Confirmar</button>
+        <button className="rounded-lg border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive">Confirmar</button>
       </form>
     </details>
   );
@@ -90,25 +90,25 @@ export default async function PlanPage({ params }: PlanPageProps) {
   const propuestos = plan.items.filter((i) => i.estado === "PROPUESTO");
 
   return (
-    <main className="min-h-full bg-neutral-50 p-5 sm:p-8">
+    <main className="min-h-full bg-background p-5 sm:p-8">
       <section className="mx-auto max-w-5xl space-y-6">
-        <header className="rounded-2xl border bg-white p-5 shadow-sm">
-          <Link href={`/pacientes/${paciente.id}/planes`} className="text-sm text-neutral-600 underline-offset-4 hover:underline">← Planes</Link>
+        <header className="rounded-2xl border bg-card p-5 shadow-sm">
+          <Link href={`/pacientes/${paciente.id}/planes`} className="text-sm text-muted-foreground underline-offset-4 hover:underline">← Planes</Link>
           <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-neutral-500">CLIDENT · Plan de tratamiento</p>
+              <p className="text-sm font-medium text-muted-foreground">CLIDENT · Plan de tratamiento</p>
               <h1 className="mt-1 text-2xl font-semibold tracking-tight">{plan.titulo ?? "Plan de tratamiento"}</h1>
-              <p className="mt-1 text-sm text-neutral-600">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {paciente.nombres} {paciente.apellidos} · {ETIQUETA_PLAN[plan.estado]}
               </p>
               {plan.motivoAnulacion ? (
-                <p className="mt-1 text-sm text-red-700">Motivo de anulación: {plan.motivoAnulacion}</p>
+                <p className="mt-1 text-sm text-destructive">Motivo de anulación: {plan.motivoAnulacion}</p>
               ) : null}
             </div>
             <div className="text-right">
-              <p className="text-xs uppercase tracking-wide text-neutral-500">Total vigente</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Total vigente</p>
               <p className="font-mono text-2xl font-semibold">{formatearUSD(total)}</p>
-              <p className="mt-1 max-w-52 text-xs text-neutral-500">
+              <p className="mt-1 max-w-52 text-xs text-muted-foreground">
                 Precios congelados al armar el plan. Aceptar no genera cobros.
               </p>
             </div>
@@ -120,7 +120,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
                 <form action={presentarPlanDesdeFormulario}>
                   <input type="hidden" name="pacienteId" value={paciente.id} />
                   <input type="hidden" name="planId" value={plan.id} />
-                  <button className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Presentar al paciente</button>
+                  <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Presentar al paciente</button>
                 </form>
               ) : null}
               {plan.estado === "PRESENTADO" ? (
@@ -135,7 +135,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
                   action={anularPlanDesdeFormulario}
                   etiqueta="Anular plan"
                   campos={{ pacienteId: paciente.id, planId: plan.id }}
-                  clase="text-red-700"
+                  clase="text-destructive"
                 />
               ) : null}
             </div>
@@ -143,9 +143,9 @@ export default async function PlanPage({ params }: PlanPageProps) {
         </header>
 
         {plan.estado === "PRESENTADO" && puedeEscribir && propuestos.length > 0 ? (
-          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+          <section className="rounded-2xl border border-exito/30 bg-exito-suave p-5 shadow-sm">
             <h2 className="text-lg font-semibold">Registrar la decisión del paciente</h2>
-            <p className="mt-1 text-sm text-neutral-700">
+            <p className="mt-1 text-sm text-foreground">
               Marcá los tratamientos que el paciente aceptó — todos o solo algunos — y confirmá.
               Es una sola acción con un solo registro de auditoría.
             </p>
@@ -153,29 +153,32 @@ export default async function PlanPage({ params }: PlanPageProps) {
               <input type="hidden" name="pacienteId" value={paciente.id} />
               <input type="hidden" name="planId" value={plan.id} />
               {propuestos.map((item) => (
-                <label key={item.id} className="flex items-center gap-3 rounded-lg border bg-white px-3 py-2 text-sm">
+                <label key={item.id} className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2 text-sm">
                   <input type="checkbox" name="itemIds" value={item.id} defaultChecked />
                   <span className="flex-1">{item.tratamientoNombre}</span>
                   <span className="font-mono">{formatearUSD(item.precioFinalCentavos)}</span>
                 </label>
               ))}
-              <button className="mt-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white">
+              {/* Acción primaria: rosa con texto ciruela, como todas. El verde de
+                  esta sección ya vive en el fondo; un botón verde encima daría
+                  2.88:1 contra blanco y reprobaría WCAG AA. */}
+              <button className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-rosa-hover">
                 Confirmar aceptación
               </button>
             </form>
           </section>
         ) : null}
 
-        <section className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-          <h2 className="border-b bg-neutral-50 px-5 py-3 text-sm font-semibold uppercase tracking-wide text-neutral-600">
+        <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <h2 className="border-b bg-muted px-5 py-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Tratamientos del plan
           </h2>
           {plan.items.length === 0 ? (
-            <p className="p-8 text-center text-sm text-neutral-600">Todavía no hay tratamientos en este plan.</p>
+            <p className="p-8 text-center text-sm text-muted-foreground">Todavía no hay tratamientos en este plan.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b text-xs uppercase tracking-wide text-neutral-500">
+                <thead className="border-b text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-5 py-3 font-medium">Tratamiento</th>
                     <th className="px-5 py-3 font-medium">Piezas</th>
@@ -189,9 +192,9 @@ export default async function PlanPage({ params }: PlanPageProps) {
                   {plan.items.map((item) => {
                     const etiqueta = ETIQUETA_ITEM[item.estado];
                     return (
-                      <tr key={item.id} className={item.estado === "CANCELADO" || item.estado === "ANULADO" ? "text-neutral-400" : ""}>
+                      <tr key={item.id} className={item.estado === "CANCELADO" || item.estado === "ANULADO" ? "text-muted-foreground/70" : ""}>
                         <td className="px-5 py-3">
-                          <span className="font-mono text-xs text-neutral-500">{item.tratamientoCodigo}</span>{" "}
+                          <span className="font-mono text-xs text-muted-foreground">{item.tratamientoCodigo}</span>{" "}
                           <span className="font-medium">{item.tratamientoNombre}</span>
                         </td>
                         <td className="px-5 py-3">
@@ -208,7 +211,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
                                   <input type="hidden" name="pacienteId" value={paciente.id} />
                                   <input type="hidden" name="planId" value={plan.id} />
                                   <input type="hidden" name="itemId" value={item.id} />
-                                  <button className="text-xs font-medium text-emerald-700 underline-offset-4 hover:underline">Declarar concluido</button>
+                                  <button className="text-xs font-medium text-exito-texto underline-offset-4 hover:underline">Declarar concluido</button>
                                 </form>
                               ) : null}
                               {item.estado === "PROPUESTO" || item.estado === "ACEPTADO" || item.estado === "EN_PROCESO" ? (
@@ -223,7 +226,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
                                   action={anularPlanItemDesdeFormulario}
                                   etiqueta="Anular (nunca ocurrió)"
                                   campos={{ pacienteId: paciente.id, planId: plan.id, itemId: item.id }}
-                                  clase="text-red-700"
+                                  clase="text-destructive"
                                 />
                               ) : null}
                             </div>
@@ -239,9 +242,9 @@ export default async function PlanPage({ params }: PlanPageProps) {
         </section>
 
         {esBorrador && puedeEscribir ? (
-          <section className="rounded-2xl border bg-white p-5 shadow-sm">
+          <section className="rounded-2xl border bg-card p-5 shadow-sm">
             <h2 className="text-lg font-semibold">Agregar tratamiento</h2>
-            <p className="mt-1 text-sm text-neutral-600">
+            <p className="mt-1 text-sm text-muted-foreground">
               El precio del catálogo se copia al plan en este momento y queda congelado:
               cambios futuros del catálogo no tocan este presupuesto.
             </p>
@@ -270,7 +273,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
                       <option key={dx.id} value={dx.id}>{dx.descripcion}</option>
                     ))}
                   </select>
-                  <span className="mt-1 block text-xs font-normal text-neutral-500">Obligatorio si el tratamiento lo exige (endodoncias, cirugía periodontal…).</span>
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground">Obligatorio si el tratamiento lo exige (endodoncias, cirugía periodontal…).</span>
                 </label>
                 <label className="block text-sm font-medium">Descuento (USD)
                   <input name="descuento" inputMode="decimal" placeholder="0.00" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
@@ -301,7 +304,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
               </fieldset>
 
               <div className="flex justify-end">
-                <button className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Agregar al plan</button>
+                <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Agregar al plan</button>
               </div>
             </form>
           </section>

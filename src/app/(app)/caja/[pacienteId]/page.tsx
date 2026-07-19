@@ -23,16 +23,16 @@ type CuentaPageProps = {
 };
 
 const ETIQUETA_CARGO: Record<string, { texto: string; clase: string }> = {
-  PENDIENTE: { texto: "Pendiente", clase: "bg-neutral-100 text-neutral-700" },
-  PARCIAL: { texto: "Parcial", clase: "bg-sky-50 text-sky-700" },
-  PAGADO: { texto: "Pagado", clase: "bg-emerald-50 text-emerald-700" },
-  ANULADO: { texto: "Anulado", clase: "bg-red-50 text-red-700" },
+  PENDIENTE: { texto: "Pendiente", clase: "bg-muted text-foreground" },
+  PARCIAL: { texto: "Parcial", clase: "bg-secondary text-secondary-foreground" },
+  PAGADO: { texto: "Pagado", clase: "bg-exito-suave text-exito-texto" },
+  ANULADO: { texto: "Anulado", clase: "bg-destructive/10 text-destructive" },
 };
 
 function Saldo({ etiqueta, centavos, destacado }: { etiqueta: string; centavos: number; destacado?: boolean }) {
   return (
-    <div className={`rounded-xl border p-4 ${destacado ? "border-neutral-900 bg-neutral-900 text-white" : "bg-white"}`}>
-      <p className={`text-xs uppercase tracking-wide ${destacado ? "text-neutral-300" : "text-neutral-500"}`}>{etiqueta}</p>
+    <div className={`rounded-xl border p-4 ${destacado ? "border-ciruela bg-ciruela text-white" : "bg-card"}`}>
+      <p className={`text-xs uppercase tracking-wide ${destacado ? "text-white/70" : "text-muted-foreground"}`}>{etiqueta}</p>
       <p className="mt-1 font-mono text-xl font-semibold">{formatearUSD(centavos)}</p>
     </div>
   );
@@ -49,13 +49,13 @@ function FormularioMotivo({
 }) {
   return (
     <details className="text-xs">
-      <summary className="cursor-pointer font-medium text-red-700">{etiqueta}</summary>
+      <summary className="cursor-pointer font-medium text-destructive">{etiqueta}</summary>
       <form action={action} className="mt-2 w-60 space-y-2">
         {Object.entries(campos).map(([nombre, valor]) => (
           <input key={nombre} type="hidden" name={nombre} value={valor} />
         ))}
         <textarea name="motivo" required maxLength={1000} rows={2} placeholder="Motivo" className="w-full rounded-lg border px-2 py-1.5" />
-        <button className="rounded-lg border border-red-300 px-3 py-1.5 font-medium text-red-800">Confirmar</button>
+        <button className="rounded-lg border border-destructive/40 px-3 py-1.5 font-medium text-destructive">Confirmar</button>
       </form>
     </details>
   );
@@ -88,18 +88,18 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
   const hoy = hoyElSalvador();
 
   return (
-    <main className="min-h-full bg-neutral-50 p-5 sm:p-8">
+    <main className="min-h-full bg-background p-5 sm:p-8">
       <section className="mx-auto max-w-5xl space-y-6">
-        <header className="rounded-2xl border bg-white p-5 shadow-sm">
-          <Link href="/caja" className="text-sm text-neutral-600 underline-offset-4 hover:underline">← Caja</Link>
-          <p className="mt-4 text-sm font-medium text-neutral-500">CLIDENT · Estado de cuenta</p>
+        <header className="rounded-2xl border bg-card p-5 shadow-sm">
+          <Link href="/caja" className="text-sm text-muted-foreground underline-offset-4 hover:underline">← Caja</Link>
+          <p className="mt-4 text-sm font-medium text-muted-foreground">CLIDENT · Estado de cuenta</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
             {cuenta.paciente.nombres} {cuenta.paciente.apellidos}
           </h1>
         </header>
 
         {aviso === "no-disponible" ? (
-          <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p role="alert" className="rounded-lg border border-advertencia/40 bg-advertencia-suave px-3 py-2 text-sm text-foreground">
             La operación no se pudo completar. Recargá la página y volvé a intentarlo.
           </p>
         ) : null}
@@ -115,7 +115,7 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
         {puedeEscribir ? (
           <section className="grid gap-6 lg:grid-cols-2">
             {pendientes.length > 0 ? (
-              <form action={crearCargoDesdeProcedimientos} className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
+              <form action={crearCargoDesdeProcedimientos} className="space-y-3 rounded-2xl border bg-card p-5 shadow-sm">
                 <h2 className="text-lg font-semibold">Cobrar procedimientos realizados</h2>
                 <input type="hidden" name="pacienteId" value={cuenta.paciente.id} />
                 {pendientes.map((procedimiento) => (
@@ -125,10 +125,10 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
                       {procedimiento.tratamientoNombre}
                     </label>
                     <div className="mt-2 flex gap-2">
-                      <label className="flex-1 text-xs text-neutral-600">Precio (USD)
+                      <label className="flex-1 text-xs text-muted-foreground">Precio (USD)
                         <input name={`precio-${procedimiento.id}`} defaultValue={usdEditable(procedimiento.precioAplicadoCentavos)} inputMode="decimal" className="mt-1 w-full rounded-lg border px-2 py-1.5" />
                       </label>
-                      <label className="flex-1 text-xs text-neutral-600">Descuento (USD)
+                      <label className="flex-1 text-xs text-muted-foreground">Descuento (USD)
                         <input name={`descuento-${procedimiento.id}`} placeholder="0.00" inputMode="decimal" className="mt-1 w-full rounded-lg border px-2 py-1.5" />
                       </label>
                     </div>
@@ -138,10 +138,10 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
                   <input name="fechaExigibleEn" type="date" required defaultValue={hoy} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
                 </label>
                 <input type="hidden" name="descripcion" value="Cobro de procedimientos" />
-                <button className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Crear cargo</button>
+                <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Crear cargo</button>
               </form>
             ) : (
-              <form action={crearCargoLibre} className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
+              <form action={crearCargoLibre} className="space-y-3 rounded-2xl border bg-card p-5 shadow-sm">
                 <h2 className="text-lg font-semibold">Nuevo cargo</h2>
                 <input type="hidden" name="pacienteId" value={cuenta.paciente.id} />
                 <label className="block text-sm font-medium">Descripción *
@@ -158,12 +158,12 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
                 <label className="block text-sm font-medium">Exigible desde *
                   <input name="fechaExigibleEn" type="date" required defaultValue={hoy} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
                 </label>
-                <button className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Crear cargo</button>
+                <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Crear cargo</button>
               </form>
             )}
 
             <div className="space-y-6">
-              <form action={registrarPagoDesdeFormulario} className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
+              <form action={registrarPagoDesdeFormulario} className="space-y-3 rounded-2xl border bg-card p-5 shadow-sm">
                 <h2 className="text-lg font-semibold">Registrar pago</h2>
                 <input type="hidden" name="pacienteId" value={cuenta.paciente.id} />
                 <div className="grid grid-cols-2 gap-3">
@@ -183,17 +183,17 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
                 <label className="block text-sm font-medium">Referencia
                   <input name="referencia" maxLength={120} placeholder="N.º de transferencia o cheque" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
                 </label>
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-muted-foreground">
                   Un pago sin aplicar queda como saldo a favor. Repartirlo entre cargos es una
                   decisión aparte, siempre humana.
                 </p>
-                <button className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Registrar</button>
+                <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Registrar</button>
               </form>
 
               {itemsParaCuotas.length > 0 ? (
-                <form method="get" action={`/caja/${cuenta.paciente.id}/cuotas`} className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
+                <form method="get" action={`/caja/${cuenta.paciente.id}/cuotas`} className="space-y-3 rounded-2xl border bg-card p-5 shadow-sm">
                   <h2 className="text-lg font-semibold">Calendario de cuotas</h2>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-muted-foreground">
                     Para tratamientos aceptados (ej. ortodoncia). Verás todas las fechas antes de confirmar.
                   </p>
                   <label className="block text-sm font-medium">Tratamiento *
@@ -221,14 +221,14 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
           </section>
         ) : null}
 
-        <section className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-          <h2 className="border-b bg-neutral-50 px-5 py-3 text-sm font-semibold uppercase tracking-wide text-neutral-600">Cargos</h2>
+        <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <h2 className="border-b bg-muted px-5 py-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Cargos</h2>
           {cuenta.cargos.length === 0 ? (
-            <p className="p-8 text-center text-sm text-neutral-600">Sin cargos registrados.</p>
+            <p className="p-8 text-center text-sm text-muted-foreground">Sin cargos registrados.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b text-xs uppercase tracking-wide text-neutral-500">
+                <thead className="border-b text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-5 py-3 font-medium">Exigible</th>
                     <th className="px-5 py-3 font-medium">Descripción</th>
@@ -243,14 +243,14 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
                     const etiqueta = ETIQUETA_CARGO[cargo.estado];
                     const esFuturo = cargo.fechaExigibleEn > hoy && !cargo.anuladoEn;
                     return (
-                      <tr key={cargo.id} className={cargo.estado === "ANULADO" ? "text-neutral-400" : ""}>
+                      <tr key={cargo.id} className={cargo.estado === "ANULADO" ? "text-muted-foreground/70" : ""}>
                         <td className="whitespace-nowrap px-5 py-3 font-mono text-xs">
                           {cargo.fechaExigibleEn}
-                          {esFuturo ? <span className="ml-1.5 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500">futura</span> : null}
+                          {esFuturo ? <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">futura</span> : null}
                         </td>
                         <td className="px-5 py-3">
                           {cargo.descripcion}
-                          {cargo.motivoAnulacion ? <span className="block text-xs text-red-700">Anulado: {cargo.motivoAnulacion}</span> : null}
+                          {cargo.motivoAnulacion ? <span className="block text-xs text-destructive">Anulado: {cargo.motivoAnulacion}</span> : null}
                         </td>
                         <td className="px-5 py-3 text-right font-mono">{formatearUSD(cargo.montoCentavos)}</td>
                         <td className="px-5 py-3 text-right font-mono">{formatearUSD(cargo.montoAplicadoCentavos)}</td>
@@ -260,7 +260,7 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
                             <div className="flex flex-col items-end gap-1.5">
                               {!cargo.anuladoEn && cargo.montoAplicadoCentavos < cargo.montoCentavos && pagosConSaldo.length > 0 ? (
                                 <details className="text-xs">
-                                  <summary className="cursor-pointer font-medium text-neutral-700">Aplicar pago</summary>
+                                  <summary className="cursor-pointer font-medium text-foreground">Aplicar pago</summary>
                                   <form action={aplicarPagoDesdeFormulario} className="mt-2 w-60 space-y-2">
                                     <input type="hidden" name="pacienteId" value={cuenta.paciente.id} />
                                     <input type="hidden" name="cargoId" value={cargo.id} />
@@ -291,27 +291,27 @@ export default async function EstadoCuentaPage({ params, searchParams }: CuentaP
           )}
         </section>
 
-        <section className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-          <h2 className="border-b bg-neutral-50 px-5 py-3 text-sm font-semibold uppercase tracking-wide text-neutral-600">Pagos</h2>
+        <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <h2 className="border-b bg-muted px-5 py-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Pagos</h2>
           {cuenta.pagos.length === 0 ? (
-            <p className="p-8 text-center text-sm text-neutral-600">Sin pagos registrados.</p>
+            <p className="p-8 text-center text-sm text-muted-foreground">Sin pagos registrados.</p>
           ) : (
             <ul className="divide-y text-sm">
               {cuenta.pagos.map((pago) => (
-                <li key={pago.id} className={`px-5 py-4 ${pago.anuladoEn ? "text-neutral-400" : ""}`}>
+                <li key={pago.id} className={`px-5 py-4 ${pago.anuladoEn ? "text-muted-foreground/70" : ""}`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-medium">
                         {formatearUSD(pago.montoCentavos)} · {pago.metodo}
-                        {pago.referencia ? <span className="ml-2 font-mono text-xs text-neutral-500">{pago.referencia}</span> : null}
-                        {pago.anuladoEn ? <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">Anulado</span> : null}
+                        {pago.referencia ? <span className="ml-2 font-mono text-xs text-muted-foreground">{pago.referencia}</span> : null}
+                        {pago.anuladoEn ? <span className="ml-2 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">Anulado</span> : null}
                       </p>
-                      <p className="mt-1 text-xs text-neutral-500">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         Aplicado: {formatearUSD(pago.montoAplicadoCentavos)} · Disponible: {formatearUSD(pago.montoCentavos - pago.montoAplicadoCentavos)}
                       </p>
-                      {pago.motivoAnulacion ? <p className="mt-1 text-xs text-red-700">Motivo: {pago.motivoAnulacion}</p> : null}
+                      {pago.motivoAnulacion ? <p className="mt-1 text-xs text-destructive">Motivo: {pago.motivoAnulacion}</p> : null}
                       {pago.aplicaciones.length > 0 ? (
-                        <ul className="mt-2 space-y-1 text-xs text-neutral-600">
+                        <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                           {pago.aplicaciones.map((aplicacion) => (
                             <li key={aplicacion.id} className="flex items-center gap-2">
                               <span className="font-mono">{formatearUSD(aplicacion.montoCentavos)}</span>

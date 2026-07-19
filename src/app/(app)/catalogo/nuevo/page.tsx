@@ -11,18 +11,18 @@ export default async function NuevoTratamientoPage() {
   const categorias = await listarCategorias(ctx);
 
   return (
-    <main className="min-h-full bg-neutral-50 p-5 sm:p-8">
+    <main className="min-h-full bg-background p-5 sm:p-8">
       <section className="mx-auto max-w-3xl space-y-6">
-        <header className="rounded-2xl border bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-neutral-500">CLIDENT · Catálogo</p>
+        <header className="rounded-2xl border bg-card p-5 shadow-sm">
+          <p className="text-sm font-medium text-muted-foreground">CLIDENT · Catálogo</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Nuevo tratamiento</h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-muted-foreground">
             Las banderas definen cómo se asigna a un paciente y no se pueden editar después:
             si el comportamiento cambia, se crea un tratamiento nuevo y se desactiva este.
           </p>
         </header>
 
-        <form action={crearTratamientoDesdeFormulario} className="space-y-5 rounded-2xl border bg-white p-5 shadow-sm">
+        <form action={crearTratamientoDesdeFormulario} className="space-y-5 rounded-2xl border bg-card p-5 shadow-sm">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium">Categoría *
               <select name="categoriaId" required className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
@@ -59,7 +59,7 @@ export default async function NuevoTratamientoPage() {
               <label className="flex items-center gap-2"><input type="checkbox" name="requiereDiagnostico" /> Exige diagnóstico previo</label>
               <label className="flex items-center gap-2"><input type="checkbox" name="permiteMultiplesSesiones" /> Se realiza en varias sesiones</label>
             </div>
-            <p className="mt-3 text-xs text-neutral-500">
+            <p className="mt-3 text-xs text-muted-foreground">
               Las superficies solo aplican a tratamientos por pieza. El catálogo nunca guarda la
               superficie: esa se elige al asignar el tratamiento a un paciente.
             </p>
@@ -67,7 +67,7 @@ export default async function NuevoTratamientoPage() {
 
           <div className="flex items-center justify-end gap-3">
             <Link href="/catalogo" className="rounded-lg px-4 py-2 text-sm">Cancelar</Link>
-            <button className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Crear tratamiento</button>
+            <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Crear tratamiento</button>
           </div>
         </form>
       </section>

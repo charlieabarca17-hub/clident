@@ -39,25 +39,25 @@ export default async function AgendaPage({ searchParams }: { searchParams: Agend
   const ruta = (otraFecha: string) => `/agenda?fecha=${otraFecha}${odontologoId ? `&odontologoId=${odontologoId}` : ""}`;
 
   return (
-    <main className="min-h-full bg-neutral-50 p-5 sm:p-8">
+    <main className="min-h-full bg-background p-5 sm:p-8">
       <section className="mx-auto max-w-6xl space-y-6">
-        <header className="flex flex-col gap-4 rounded-2xl border bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <header className="flex flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-neutral-500">CLIDENT · Agenda</p>
+            <p className="text-sm font-medium text-muted-foreground">CLIDENT · Agenda</p>
             <h1 className="mt-1 text-2xl font-semibold capitalize tracking-tight">{etiquetaFecha(fecha)}</h1>
-            <p className="mt-1 text-sm text-neutral-600">Agenda diaria por odontólogo. La base impide reservas cruzadas o simultáneas.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Agenda diaria por odontólogo. La base impide reservas cruzadas o simultáneas.</p>
           </div>
           {puedeEscribir ? (
             <Link
               href={`/agenda/nueva?fecha=${fecha}`}
-              className="rounded-lg bg-neutral-900 px-4 py-2 text-center text-sm font-medium text-white"
+              className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-center text-sm font-medium text-primary-foreground"
             >
               + Nueva cita
             </Link>
           ) : null}
         </header>
 
-        <section className="flex flex-col gap-3 rounded-2xl border bg-white p-4 shadow-sm sm:flex-row sm:items-end sm:justify-between">
+        <section className="flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-sm sm:flex-row sm:items-end sm:justify-between">
           <nav className="flex items-center gap-2" aria-label="Cambiar día">
             <Link href={ruta(moverDia(fecha, -1))} className="rounded-lg border px-3 py-2 text-sm">← Anterior</Link>
             <Link href={ruta(fechaHoyElSalvador())} className="rounded-lg border px-3 py-2 text-sm">Hoy</Link>
@@ -76,7 +76,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Agend
         </section>
 
         {odontologos.length > 0 ? (
-          <aside className="flex flex-wrap gap-3 text-sm text-neutral-700" aria-label="Odontólogos disponibles">
+          <aside className="flex flex-wrap gap-3 text-sm text-foreground" aria-label="Odontólogos disponibles">
             {odontologos.map((odontologo) => (
               <span key={odontologo.id} className="inline-flex items-center gap-2">
                 <span className="size-3 rounded-full" style={{ backgroundColor: odontologo.colorAgenda ?? "#737373" }} />
@@ -86,16 +86,16 @@ export default async function AgendaPage({ searchParams }: { searchParams: Agend
           </aside>
         ) : null}
 
-        <section className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+        <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
           {citas.length === 0 ? (
             <div className="p-10 text-center">
               <h2 className="text-lg font-semibold">No hay citas para este día</h2>
-              <p className="mt-2 text-sm text-neutral-600">Podés elegir otro odontólogo, cambiar la fecha o crear una cita nueva.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Podés elegir otro odontólogo, cambiar la fecha o crear una cita nueva.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
+                <thead className="border-b bg-muted text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-5 py-3 font-medium">Hora</th>
                     <th className="px-5 py-3 font-medium">Paciente</th>
@@ -107,10 +107,10 @@ export default async function AgendaPage({ searchParams }: { searchParams: Agend
                 </thead>
                 <tbody className="divide-y">
                   {citas.map((cita) => (
-                    <tr key={cita.id} className={cita.estado === "CANCELADA" ? "bg-neutral-50 text-neutral-500" : ""}>
+                    <tr key={cita.id} className={cita.estado === "CANCELADA" ? "bg-muted text-muted-foreground" : ""}>
                       <td className="whitespace-nowrap px-5 py-4 font-medium">{cita.horaInicio}–{cita.horaFin}</td>
                       <td className="px-5 py-4">
-                        <Link href={`/pacientes/${cita.paciente.id}`} className="font-medium text-neutral-900 underline-offset-4 hover:underline">
+                        <Link href={`/pacientes/${cita.paciente.id}`} className="font-medium text-foreground underline-offset-4 hover:underline">
                           {cita.paciente.nombreCompleto}
                         </Link>
                       </td>
@@ -122,14 +122,14 @@ export default async function AgendaPage({ searchParams }: { searchParams: Agend
                       </td>
                       <td className="max-w-64 px-5 py-4">{cita.motivo ?? "—"}</td>
                       <td className="px-5 py-4">
-                        <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium">{cita.estado}</span>
+                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">{cita.estado}</span>
                       </td>
                       <td className="px-5 py-4 text-right">
                         {puedeEscribir && cita.estado === "PENDIENTE" ? (
                           <form action={cancelarCitaDesdeFormulario}>
                             <input type="hidden" name="citaId" value={cita.id} />
                             <input type="hidden" name="fecha" value={fecha} />
-                            <button className="text-sm font-medium text-red-700">Cancelar</button>
+                            <button className="text-sm font-medium text-destructive">Cancelar</button>
                           </form>
                         ) : null}
                       </td>

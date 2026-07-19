@@ -11,23 +11,38 @@
 
 // Las 16 condiciones y sus colores vienen del prototipo validado (referencia
 // de producto). El color es presentación; el valor clínico es el enum.
+//
+// LOS COLORES NO SE CAMBIAN por armonía visual con la paleta de la marca.
+// Siguen convención odontológica (rojo = caries, azul = obturación) y un
+// odontólogo los lee sin leyenda. Recolorearlos es una decisión clínica, no
+// de diseño.
+//
+// `letra` es la marca no cromática de cada condición. Alrededor del 8% de los
+// hombres tiene daltonismo, y esto es una historia clínica: el color NUNCA
+// puede ser el único portador de sentido. Cada letra es única entre las 16 —
+// si dos condiciones compartieran letra, la marca dejaría de distinguirlas
+// justo para quien no puede usar el color.
 export const CONDICIONES_DENTALES = [
-  { condicion: "SANO", etiqueta: "Sano", color: "#4CAF50" },
-  { condicion: "CARIES", etiqueta: "Caries", color: "#E53935" },
-  { condicion: "OBTURACION", etiqueta: "Obturación", color: "#1E88E5" },
-  { condicion: "CORONA", etiqueta: "Corona", color: "#F59E0B" },
-  { condicion: "IMPLANTE", etiqueta: "Implante", color: "#7C3AED" },
-  { condicion: "EXTRACCION_INDICADA", etiqueta: "Extracción indicada", color: "#6D4C41" },
-  { condicion: "AUSENTE", etiqueta: "Ausente", color: "#9E9E9E" },
-  { condicion: "ENDODONCIA", etiqueta: "Endodoncia", color: "#E91E63" },
-  { condicion: "PUENTE", etiqueta: "Puente", color: "#FF7043" },
-  { condicion: "PROTESIS", etiqueta: "Prótesis", color: "#00ACC1" },
-  { condicion: "SELLANTE", etiqueta: "Sellante", color: "#43A047" },
-  { condicion: "FRACTURA", etiqueta: "Fractura", color: "#FF5722" },
-  { condicion: "MOVILIDAD", etiqueta: "Movilidad", color: "#FDD835" },
-  { condicion: "RECESION", etiqueta: "Recesión gingival", color: "#D81B60" },
-  { condicion: "ABSCESO", etiqueta: "Absceso", color: "#8D6E63" },
-  { condicion: "IMPACTADO", etiqueta: "Impactado", color: "#5E35B1" },
+  { condicion: "SANO", etiqueta: "Sano", color: "#4CAF50", letra: "·" },
+  { condicion: "CARIES", etiqueta: "Caries", color: "#E53935", letra: "C" },
+  { condicion: "OBTURACION", etiqueta: "Obturación", color: "#1E88E5", letra: "O" },
+  // K de corona: "C" ya la ocupa caries, y K es la convención heredada del alemán.
+  { condicion: "CORONA", etiqueta: "Corona", color: "#F59E0B", letra: "K" },
+  { condicion: "IMPLANTE", etiqueta: "Implante", color: "#7C3AED", letra: "I" },
+  { condicion: "EXTRACCION_INDICADA", etiqueta: "Extracción indicada", color: "#6D4C41", letra: "▲" },
+  { condicion: "AUSENTE", etiqueta: "Ausente", color: "#9E9E9E", letra: "✕" },
+  { condicion: "ENDODONCIA", etiqueta: "Endodoncia", color: "#E91E63", letra: "E" },
+  { condicion: "PUENTE", etiqueta: "Puente", color: "#FF7043", letra: "P" },
+  // R de p-r-ótesis: "P" ya la ocupa puente.
+  { condicion: "PROTESIS", etiqueta: "Prótesis", color: "#00ACC1", letra: "R" },
+  { condicion: "SELLANTE", etiqueta: "Sellante", color: "#43A047", letra: "S" },
+  { condicion: "FRACTURA", etiqueta: "Fractura", color: "#FF5722", letra: "F" },
+  { condicion: "MOVILIDAD", etiqueta: "Movilidad", color: "#FDD835", letra: "M" },
+  // G de recesión -g-ingival, que es como se llama completa en la leyenda.
+  { condicion: "RECESION", etiqueta: "Recesión gingival", color: "#D81B60", letra: "G" },
+  { condicion: "ABSCESO", etiqueta: "Absceso", color: "#8D6E63", letra: "A" },
+  // D de impacta-d-o: "I" ya la ocupa implante.
+  { condicion: "IMPACTADO", etiqueta: "Impactado", color: "#5E35B1", letra: "D" },
 ] as const;
 
 export type CondicionDental = (typeof CONDICIONES_DENTALES)[number]["condicion"];
@@ -45,6 +60,32 @@ export function etiquetaCondicion(condicion: CondicionDental): string {
 
 export function colorCondicion(condicion: CondicionDental): string {
   return POR_CONDICION.get(condicion)?.color ?? "#cccccc";
+}
+
+/** Marca no cromática de la condición: lo que se lee cuando el color no llega. */
+export function letraCondicion(condicion: CondicionDental): string {
+  return POR_CONDICION.get(condicion)?.letra ?? "?";
+}
+
+/**
+ * Elige negro o blanco para el texto sobre el color de una condición, según
+ * cuál de los dos contrasta más.
+ *
+ * Los 16 colores son de convención odontológica y cubren todo el rango de
+ * luminosidad: el amarillo de movilidad (#FDD835) con letra blanca da 1.4:1 y
+ * es ilegible, y el café de absceso (#8D6E63) con letra negra queda flojo.
+ * Fijar un solo color de texto rompe la mitad de los casos, así que se calcula.
+ */
+export function textoSobreCondicion(condicion: CondicionDental): string {
+  const hex = colorCondicion(condicion);
+  const canal = [1, 3, 5]
+    .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+  const luminancia = 0.2126 * canal[0] + 0.7152 * canal[1] + 0.0722 * canal[2];
+  // Contraste contra blanco vs. contra negro; gana el mayor.
+  const contraBlanco = 1.05 / (luminancia + 0.05);
+  const contraNegro = (luminancia + 0.05) / 0.05;
+  return contraNegro > contraBlanco ? "#1a1a1a" : "#ffffff";
 }
 
 export type TipoEventoOdontograma =

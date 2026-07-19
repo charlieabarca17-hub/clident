@@ -10,21 +10,21 @@ export default async function NuevoPacientePage() {
   requirePermiso(ctx, "paciente:write");
 
   return (
-    <main className="min-h-full bg-neutral-50 p-5 sm:p-8">
+    <main className="min-h-full bg-background p-5 sm:p-8">
       <section className="mx-auto max-w-3xl">
         <header className="mb-6 flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-medium text-neutral-500">CLIDENT · Pacientes</p>
+            <p className="text-sm font-medium text-muted-foreground">CLIDENT · Pacientes</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">Nuevo paciente</h1>
           </div>
-          <Link href="/pacientes" className="rounded-lg border bg-white px-3 py-2 text-sm">Volver a pacientes</Link>
+          <Link href="/pacientes" className="rounded-lg border bg-card px-3 py-2 text-sm">Volver a pacientes</Link>
         </header>
 
-        <form action={crearPacienteDesdeFormulario} className="space-y-6 rounded-2xl border bg-white p-5 shadow-sm">
+        <form action={crearPacienteDesdeFormulario} className="space-y-6 rounded-2xl border bg-card p-5 shadow-sm">
           <section className="space-y-4">
             <div>
               <h2 className="font-semibold">Datos del paciente</h2>
-              <p className="mt-1 text-sm text-neutral-600">Los campos marcados con * son obligatorios.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Los campos marcados con * son obligatorios.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block text-sm font-medium">Nombres *
@@ -54,7 +54,7 @@ export default async function NuevoPacientePage() {
           <section className="space-y-4 border-t pt-6">
             <div>
               <h2 className="font-semibold">Contacto de emergencia</h2>
-              <p className="mt-1 text-sm text-neutral-600">Siempre se registra, aun para pacientes adultos.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Siempre se registra, aun para pacientes adultos.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block text-sm font-medium">Nombre completo *
@@ -69,7 +69,7 @@ export default async function NuevoPacientePage() {
           <section className="space-y-4 border-t pt-6">
             <div>
               <h2 className="font-semibold">Responsable</h2>
-              <p className="mt-1 text-sm text-neutral-600">Obligatorio y completo si el paciente es menor de 18 años.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Obligatorio y completo si el paciente es menor de 18 años.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block text-sm font-medium">Nombre completo
@@ -97,7 +97,7 @@ export default async function NuevoPacientePage() {
 
           <div className="flex justify-end gap-3 border-t pt-5">
             <Link href="/pacientes" className="rounded-lg border px-4 py-2 text-sm font-medium">Cancelar</Link>
-            <button className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Crear paciente</button>
+            <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Crear paciente</button>
           </div>
         </form>
       </section>

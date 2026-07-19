@@ -13,15 +13,15 @@ export default async function ElegirClinicaPage({
   const { error } = await searchParams;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-neutral-50 p-6">
-      <section className="w-full max-w-lg rounded-2xl border bg-white p-8 shadow-sm">
-        <p className="text-sm font-medium text-neutral-500">CLIDENT</p>
+    <main className="flex min-h-screen items-center justify-center bg-muted p-6">
+      <section className="w-full max-w-lg rounded-2xl border bg-card p-8 shadow-sm">
+        <p className="text-sm font-medium text-muted-foreground">CLIDENT</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">Elegí una clínica</h1>
-        <p className="mt-2 text-sm text-neutral-500">Tus permisos pueden ser distintos en cada clínica.</p>
-        {error ? <p role="alert" className="mt-4 text-sm text-red-700">La selección ya no está disponible.</p> : null}
+        <p className="mt-2 text-sm text-muted-foreground">Tus permisos pueden ser distintos en cada clínica.</p>
+        {error ? <p role="alert" className="mt-4 text-sm text-destructive">La selección ya no está disponible.</p> : null}
         {membresias.length === 0 ? (
           <>
-            <p className="mt-6 rounded-lg bg-amber-50 p-4 text-sm text-amber-800">No tenés membresías activas.</p>
+            <p className="mt-6 rounded-lg bg-advertencia-suave p-4 text-sm text-foreground">No tenés membresías activas.</p>
             <form action={cerrarSesion} className="mt-4">
               <button className="w-full rounded-lg border px-4 py-2 text-sm font-medium">Cerrar sesión</button>
             </form>
@@ -33,10 +33,10 @@ export default async function ElegirClinicaPage({
             {membresias.map((membresia) => (
               <form action={elegirClinica} key={membresia.id}>
                 <input type="hidden" name="clinicaId" value={membresia.clinicaId} />
-                <button className="flex w-full items-center justify-between rounded-xl border p-4 text-left hover:bg-neutral-50">
+                <button className="flex w-full items-center justify-between rounded-xl border p-4 text-left hover:bg-accent">
                   <span>
                     <span className="block font-medium">{membresia.clinica.nombre}</span>
-                    <span className="mt-1 block text-xs text-neutral-500">{membresia.roles.join(" · ")}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">{membresia.roles.join(" · ")}</span>
                   </span>
                   <span aria-hidden>→</span>
                 </button>

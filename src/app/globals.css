@@ -4,18 +4,58 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================================
+   IDENTIDAD VISUAL DE CLIDENT
+   ============================================================================
+
+   Paleta definida y aprobada por Carlos el 18-jul-2026. NO se cambian estos
+   valores sin su autorización: el contraste de cada par ya fue verificado
+   contra WCAG AA y rehacerlo es perder trabajo aprobado.
+
+   Se escriben en HEX, no en oklch, a propósito. El dueño de este sistema no
+   es programador: tiene que poder abrir este archivo, leer `#E88DA3` y
+   reconocer su propio rosa. `oklch(0.74 0.09 5.2)` no se puede verificar a
+   simple vista, y una paleta que nadie puede auditar termina derivando.
+
+   La decisión menos obvia y más importante:
+
+     LOS BOTONES ROSA LLEVAN TEXTO CIRUELA, NO BLANCO.
+
+   Rosa #E88DA3 con blanco da 2.6:1 — reprueba WCAG AA (mínimo 4.5:1).
+   Rosa #E88DA3 con ciruela #4B2636 da 5.1:1 — aprueba.
+   Si algún día ves `text-white` sobre un fondo rosa, es una regresión.
+   ========================================================================= */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  /* Estas tres apuntan a las variables que declara src/app/layout.tsx con next/font.
-     `shadcn init` generó `--font-sans: var(--font-sans)` — una referencia circular: la
-     variable se define en términos de sí misma, no resuelve, y la página cae a la fuente
-     por defecto del navegador sin que nada falle. `--font-mono` sí quedó bien, y esa es
-     la forma correcta. `--font-heading` se escribe explícita en vez de encadenar por
+
+  /* Tokens con nombre de la paleta CLIDENT. Existen además de los semánticos
+     de shadcn porque hay lugares (el odontograma, la barra lateral) donde lo
+     que se quiere decir es "el rosa de la marca", no "el color primario". */
+  --color-fondo: var(--fondo);
+  --color-superficie: var(--superficie);
+  --color-rosa: var(--rosa);
+  --color-rosa-suave: var(--rosa-suave);
+  --color-rosa-hover: var(--rosa-hover);
+  --color-ciruela: var(--ciruela);
+  --color-texto: var(--texto);
+  --color-texto-2: var(--texto-2);
+  --color-borde: var(--borde);
+  --color-exito: var(--exito);
+  --color-exito-suave: var(--exito-suave);
+  --color-exito-texto: var(--exito-texto);
+  --color-advertencia: var(--advertencia);
+  --color-advertencia-suave: var(--advertencia-suave);
+
+  /* Plus Jakarta Sans, servida local por next/font. La maqueta usaba pila del
+     sistema sólo porque el CSP de los artifacts bloquea CDNs; acá no aplica.
+     `--font-heading` se escribe explícita y no encadenando por
      `var(--font-sans)`, para que no dependa del orden de resolución. */
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-jakarta);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-geist-sans);
+  --font-heading: var(--font-jakarta);
+
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -45,6 +85,9 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
+  /* Radios 12–16px. `--radius` es 14px y el resto se deriva; las tarjetas usan
+     `rounded-2xl` (≈25px) a propósito para las superficies grandes. */
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -54,73 +97,193 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* --------------------------------------------------------------------------
+   TEMA CLARO
+   -------------------------------------------------------------------------- */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Le dice al navegador de qué color pintar lo que NO controla el CSS: las
+     barras de desplazamiento y los desplegables nativos de los <select> y del
+     <input type="datetime-local"> del odontograma. Sin esto, en tema oscuro
+     esos controles salen blancos y delatan que el oscuro es una capa de
+     pintura y no un tema de verdad. */
+  color-scheme: light;
+
+  /* Paleta cruda aprobada. */
+  --fondo: #fffdfc;
+  --superficie: #ffffff;
+  --rosa: #e88da3;
+  --rosa-suave: #fbe8ed;
+  --rosa-hover: #cf6f89;
+  --ciruela: #4b2636;
+  --texto: #2d2830;
+  --texto-2: #766b71;
+  --borde: #ede5e8;
+  --exito: #48a987;
+  --advertencia: #e5a44b;
+
+  /* Variantes suaves para fondos de estado. No estaban en la paleta original
+     porque la maqueta no tenía avisos; se derivan del tono aprobado y sólo se
+     usan como fondo, nunca como texto. */
+  --exito-suave: #eaf6f1;
+  --advertencia-suave: #fdf3e4;
+
+  /* El verde aprobado #48A987 es correcto como RELLENO (puntos, bordes, barras)
+     pero como TEXTO da 2.60:1 sobre su propio fondo suave y reprueba WCAG AA.
+     Este es el mismo verde, oscurecido hasta 5.10:1. Regla: `bg-exito` pinta,
+     `text-exito-texto` se lee. Nunca `text-exito` sobre fondo claro. */
+  --exito-texto: #2f7358;
+
+  /* Semánticos de shadcn, mapeados a la paleta. Esto es lo que hace que las
+     27 pantallas cambien de aspecto sin tocarlas una por una: usan
+     `bg-background`, `text-muted-foreground`, `border-border`. */
+  --background: var(--fondo);
+  --foreground: var(--texto);
+  --card: var(--superficie);
+  --card-foreground: var(--texto);
+  --popover: var(--superficie);
+  --popover-foreground: var(--texto);
+
+  /* El par de la decisión #1: fondo rosa, texto ciruela. */
+  --primary: var(--rosa);
+  --primary-foreground: var(--ciruela);
+
+  --secondary: var(--rosa-suave);
+  --secondary-foreground: var(--ciruela);
+  --muted: var(--rosa-suave);
+  --muted-foreground: var(--texto-2);
+  --accent: var(--rosa-suave);
+  --accent-foreground: var(--ciruela);
+
+  /* Rojo de la familia de la paleta (mismo tono cálido), no el rojo puro de
+     shadcn, que al lado del rosa se ve de otro sistema. */
+  --destructive: #c14356;
+
+  --border: var(--borde);
+  --input: var(--borde);
+  --ring: var(--rosa);
+
+  --chart-1: var(--rosa);
+  --chart-2: var(--ciruela);
+  --chart-3: var(--exito);
+  --chart-4: var(--advertencia);
+  --chart-5: var(--rosa-hover);
+
+  --radius: 0.875rem; /* 14px */
+
+  /* Barra lateral ciruela: es el ancla de identidad de toda la aplicación. */
+  --sidebar: var(--ciruela);
+  --sidebar-foreground: #f4e8ec;
+  --sidebar-primary: var(--rosa);
+  --sidebar-primary-foreground: var(--ciruela);
+  --sidebar-accent: #5e3345;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #63394a;
+  --sidebar-ring: var(--rosa);
 }
 
+/* --------------------------------------------------------------------------
+   TEMA OSCURO
+
+   No es una inversión automática: el ciruela deja de ser el acento y pasa a
+   ser el suelo, y el rosa mantiene el protagonismo. Por eso los fondos son
+   ciruelas muy oscuros y no grises.
+
+   Sólo se redefine lo que DE VERDAD cambia. Todo lo demás
+   (`--background: var(--fondo)`, `--primary: var(--rosa)`…) ya está declarado
+   en términos de la paleta allá arriba, así que sigue solo al mover la paleta.
+
+   ⚠ Estos valores están escritos DOS VECES: acá y en el bloque
+   `@media (prefers-color-scheme: dark)` de abajo. Es duplicación deliberada —
+   CSS no permite compartir un cuerpo entre un selector y un media query, y la
+   alternativa (una capa de indirección con variables `--oscuro-*`) es más
+   difícil de leer que el problema que resuelve. Para que no puedan derivar,
+   `tests/unit/tema-oscuro.test.ts` compara los dos bloques y falla el build si
+   dejan de coincidir.
+   -------------------------------------------------------------------------- */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* --- INICIO TEMA OSCURO --- */
+  color-scheme: dark;
+
+  --fondo: #1c1218;
+  --superficie: #271821;
+  --rosa: #e88da3;
+  --rosa-suave: #3a2430;
+  --rosa-hover: #f0a5b8;
+  --ciruela: #4b2636;
+  --texto: #f6ecef;
+  --texto-2: #bfa9b3;
+  --borde: #3d2833;
+  --exito: #63c3a1;
+  --advertencia: #edb96f;
+  --exito-suave: #1e3830;
+  --advertencia-suave: #3a2e1c;
+  /* En oscuro el problema se invierte: el texto verde debe ACLARARSE para
+     despegarse del fondo, no oscurecerse. */
+  --exito-texto: #7fd4b2;
+
+  /* Sobre rosa suave oscuro el ciruela no se lee: el texto pasa a ser claro.
+     El par rosa+ciruela de los botones NO cambia — esa decisión no depende
+     del tema. */
+  --secondary-foreground: var(--texto);
+  --accent-foreground: var(--texto);
+
+  --destructive: #e97185;
+  --input: #4a303d;
+  --chart-2: #c98aa4;
+
+  /* La barra lateral se hunde por debajo del fondo: en oscuro el ciruela ya
+     es el suelo, así que el ancla de identidad tiene que ser aún más profunda
+     para seguir separándose. */
+  --sidebar: #150d12;
+  --sidebar-accent: #33202b;
+  --sidebar-border: #3d2833;
+  /* --- FIN TEMA OSCURO --- */
+}
+
+/* Activación automática: si el sistema operativo pide oscuro, la aplicación
+   responde. Sin JavaScript, sin parpadeo al cargar y sin dependencias nuevas.
+   `:not(.light)` deja la puerta abierta a un interruptor futuro que force el
+   tema claro. */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    /* --- INICIO TEMA OSCURO --- */
+    color-scheme: dark;
+
+    --fondo: #1c1218;
+    --superficie: #271821;
+    --rosa: #e88da3;
+    --rosa-suave: #3a2430;
+    --rosa-hover: #f0a5b8;
+    --ciruela: #4b2636;
+    --texto: #f6ecef;
+    --texto-2: #bfa9b3;
+    --borde: #3d2833;
+    --exito: #63c3a1;
+    --advertencia: #edb96f;
+    --exito-suave: #1e3830;
+    --advertencia-suave: #3a2e1c;
+    /* En oscuro el problema se invierte: el texto verde debe ACLARARSE para
+       despegarse del fondo, no oscurecerse. */
+    --exito-texto: #7fd4b2;
+
+    /* Sobre rosa suave oscuro el ciruela no se lee: el texto pasa a ser claro.
+       El par rosa+ciruela de los botones NO cambia — esa decisión no depende
+       del tema. */
+    --secondary-foreground: var(--texto);
+    --accent-foreground: var(--texto);
+
+    --destructive: #e97185;
+    --input: #4a303d;
+    --chart-2: #c98aa4;
+
+    /* La barra lateral se hunde por debajo del fondo: en oscuro el ciruela ya
+       es el suelo, así que el ancla de identidad tiene que ser aún más profunda
+       para seguir separándose. */
+    --sidebar: #150d12;
+    --sidebar-accent: #33202b;
+    --sidebar-border: #3d2833;
+    /* --- FIN TEMA OSCURO --- */
+  }
 }
 
 @layer base {

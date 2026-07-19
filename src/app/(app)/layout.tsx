@@ -44,10 +44,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-full flex-col lg:flex-row">
       <BarraLateral grupos={grupos} clinica={clinica?.nombre ?? "Clínica"} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-end gap-4 border-b bg-white px-5 py-2.5 text-sm">
-          <span className="hidden truncate text-neutral-600 sm:inline">{ctx.roles.join(" · ")}</span>
+        <header className="flex items-center justify-end gap-4 border-b bg-card px-5 py-2.5 text-sm">
+          <span className="hidden truncate text-muted-foreground sm:inline">{ctx.roles.join(" · ")}</span>
           <form action={cerrarSesion}>
-            <button className="rounded-lg border px-3 py-1.5 text-xs font-medium">Cerrar sesión</button>
+            <button className="rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground">
+              Cerrar sesión
+            </button>
           </form>
         </header>
         <div className="min-w-0 flex-1">{children}</div>

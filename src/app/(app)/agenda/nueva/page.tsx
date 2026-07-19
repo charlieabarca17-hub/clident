@@ -24,24 +24,24 @@ export default async function NuevaCitaPage({ searchParams }: { searchParams: Nu
   const pacienteId = preseleccion?.id ?? "";
 
   return (
-    <main className="min-h-full bg-neutral-50 p-5 sm:p-8">
+    <main className="min-h-full bg-background p-5 sm:p-8">
       <section className="mx-auto max-w-2xl">
         <header className="mb-6 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-neutral-500">CLIDENT · Agenda</p>
+            <p className="text-sm font-medium text-muted-foreground">CLIDENT · Agenda</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">Nueva cita</h1>
           </div>
-          <Link href={`/agenda?fecha=${fecha}`} className="rounded-lg border bg-white px-3 py-2 text-sm">Volver a la agenda</Link>
+          <Link href={`/agenda?fecha=${fecha}`} className="rounded-lg border bg-card px-3 py-2 text-sm">Volver a la agenda</Link>
         </header>
 
-        <form action={crearCitaDesdeFormulario} className="space-y-5 rounded-2xl border bg-white p-5 shadow-sm">
+        <form action={crearCitaDesdeFormulario} className="space-y-5 rounded-2xl border bg-card p-5 shadow-sm">
           {parametros.error === "traslape" ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+            <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
               Ese horario ya no está disponible para el paciente o el odontólogo. Elegí otro horario.
             </p>
           ) : null}
           {parametros.error === "sucursal" ? (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">
+            <p className="rounded-lg border border-advertencia/30 bg-advertencia-suave px-3 py-2 text-sm text-foreground" role="alert">
               Esta clínica tiene más de una sede. La selección de sede llegará antes de poder agendar en esa configuración.
             </p>
           ) : null}
@@ -56,7 +56,7 @@ export default async function NuevaCitaPage({ searchParams }: { searchParams: Nu
               ))}
             </select>
             {preseleccion ? (
-              <p className="mt-2 text-sm text-neutral-600">Paciente preseleccionado desde su expediente: {preseleccion.nombres} {preseleccion.apellidos}.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Paciente preseleccionado desde su expediente: {preseleccion.nombres} {preseleccion.apellidos}.</p>
             ) : null}
           </div>
 
@@ -68,7 +68,7 @@ export default async function NuevaCitaPage({ searchParams }: { searchParams: Nu
                 <option key={odontologo.id} value={odontologo.id}>{odontologo.nombre}</option>
               ))}
             </select>
-            {odontologos.length === 0 ? <p className="mt-2 text-sm text-red-700">No hay odontólogos activos para esta clínica.</p> : null}
+            {odontologos.length === 0 ? <p className="mt-2 text-sm text-destructive">No hay odontólogos activos para esta clínica.</p> : null}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
@@ -99,7 +99,7 @@ export default async function NuevaCitaPage({ searchParams }: { searchParams: Nu
 
           <div className="flex justify-end gap-3 border-t pt-5">
             <Link href={`/agenda?fecha=${fecha}`} className="rounded-lg border px-4 py-2 text-sm font-medium">Cancelar</Link>
-            <button disabled={odontologos.length === 0 || pacientes.length === 0} className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-neutral-300">
+            <button disabled={odontologos.length === 0 || pacientes.length === 0} className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground">
               Guardar cita
             </button>
           </div>

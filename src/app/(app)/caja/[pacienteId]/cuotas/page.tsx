@@ -46,33 +46,33 @@ export default async function ConfirmarCuotasPage({ params, searchParams }: Cuot
   const fechas = parametrosValidos ? generarFechasCuotasMensuales(inicio, cantidad) : [];
 
   return (
-    <main className="min-h-full bg-neutral-50 p-5 sm:p-8">
+    <main className="min-h-full bg-background p-5 sm:p-8">
       <section className="mx-auto max-w-3xl space-y-6">
-        <header className="rounded-2xl border bg-white p-5 shadow-sm">
-          <Link href={`/caja/${pacienteId}`} className="text-sm text-neutral-600 underline-offset-4 hover:underline">← Estado de cuenta</Link>
-          <p className="mt-4 text-sm font-medium text-neutral-500">CLIDENT · Calendario de cuotas</p>
+        <header className="rounded-2xl border bg-card p-5 shadow-sm">
+          <Link href={`/caja/${pacienteId}`} className="text-sm text-muted-foreground underline-offset-4 hover:underline">← Estado de cuenta</Link>
+          <p className="mt-4 text-sm font-medium text-muted-foreground">CLIDENT · Calendario de cuotas</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
             {cuenta.paciente.nombres} {cuenta.paciente.apellidos}
           </h1>
         </header>
 
         {!parametrosValidos ? (
-          <p className="rounded-2xl border bg-white p-8 text-center text-sm text-neutral-600 shadow-sm">
+          <p className="rounded-2xl border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">
             Los parámetros del calendario no son válidos. Volvé al estado de cuenta e intentá de nuevo.
           </p>
         ) : (
-          <section className="rounded-2xl border bg-white p-5 shadow-sm">
+          <section className="rounded-2xl border bg-card p-5 shadow-sm">
             <h2 className="text-lg font-semibold">
               {cantidad} cuota{cantidad === 1 ? "" : "s"} de {formatearUSD(montoCentavos!)}
             </h2>
-            <p className="mt-1 text-sm text-neutral-600">
+            <p className="mt-1 text-sm text-muted-foreground">
               Revisá cada fecha antes de confirmar. Solo la primera cuota vencida o de hoy entra
               al «debe hoy»; las demás son futuras hasta que les llegue el día.
             </p>
             <ol className="mt-4 grid gap-1.5 text-sm sm:grid-cols-2">
               {fechas.map((fecha, indice) => (
                 <li key={fecha} className="flex items-center justify-between rounded-lg border px-3 py-2">
-                  <span className="text-neutral-600">Cuota {indice + 1}</span>
+                  <span className="text-muted-foreground">Cuota {indice + 1}</span>
                   <span className="font-medium">{fechaLarga(fecha)}</span>
                 </li>
               ))}
@@ -84,10 +84,10 @@ export default async function ConfirmarCuotasPage({ params, searchParams }: Cuot
               {fechas.map((fecha) => (
                 <input key={fecha} type="hidden" name="fechas" value={fecha} />
               ))}
-              <p className="text-sm text-neutral-600">
+              <p className="text-sm text-muted-foreground">
                 Total del calendario: <strong className="font-mono">{formatearUSD(montoCentavos! * cantidad)}</strong>
               </p>
-              <button className="rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white">
+              <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-5 py-2.5 text-sm font-medium text-primary-foreground">
                 Confirmar y crear las {cantidad} cuotas
               </button>
             </form>
