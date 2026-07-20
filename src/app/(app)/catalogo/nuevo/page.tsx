@@ -3,12 +3,10 @@ import Link from "next/link";
 import { crearTratamientoDesdeFormulario } from "@/server/actions/catalogo";
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso } from "@/server/auth/permissions";
-import { listarCategorias } from "@/server/db/catalogo";
 
 export default async function NuevoTratamientoPage() {
   const ctx = await requireCtx();
   requirePermiso(ctx, "catalogo:write");
-  const categorias = await listarCategorias(ctx);
 
   return (
     <main className="min-h-full bg-background p-5 sm:p-8">
@@ -25,21 +23,13 @@ export default async function NuevoTratamientoPage() {
         <form action={crearTratamientoDesdeFormulario} className="space-y-5 rounded-2xl border bg-card p-5 shadow-sm">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium">Categoría *
-              <select name="categoriaId" required className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
-                <option value="">Elegí una categoría</option>
-                {categorias.map((categoria) => (
-                  <option key={categoria.id} value={categoria.id}>{categoria.nombre}</option>
-                ))}
-              </select>
+              <input name="categoriaNombre" required maxLength={80} placeholder="Ej.: Endodoncia" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
             </label>
             <label className="block text-sm font-medium">Código *
               <input name="codigo" required maxLength={20} placeholder="RES-09" className="mt-1 w-full rounded-lg border px-3 py-2 font-mono font-normal uppercase" />
             </label>
             <label className="block text-sm font-medium sm:col-span-2">Nombre *
               <input name="nombre" required maxLength={120} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
-            </label>
-            <label className="block text-sm font-medium">Precio de lista (USD) *
-              <input name="precio" required inputMode="decimal" placeholder="45.00" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
             </label>
             <label className="block text-sm font-medium">Alcance *
               <select name="alcance" required className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
@@ -48,6 +38,11 @@ export default async function NuevoTratamientoPage() {
               </select>
             </label>
           </div>
+
+          <p className="rounded-lg bg-secondary/60 p-3 text-sm text-secondary-foreground">
+            Este catálogo no guarda precios. El odontólogo definirá el total acordado cuando agregue
+            el tratamiento al plan de cada paciente.
+          </p>
 
           <fieldset className="rounded-lg border p-4">
             <legend className="px-1 text-sm font-medium">Comportamiento al asignarlo</legend>

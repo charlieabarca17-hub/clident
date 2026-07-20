@@ -245,8 +245,8 @@ export default async function PlanPage({ params }: PlanPageProps) {
           <section className="rounded-2xl border bg-card p-5 shadow-sm">
             <h2 className="text-lg font-semibold">Agregar tratamiento</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              El catálogo muestra una referencia. Vos decidís el precio para este paciente y,
-              al agregarlo, queda congelado en el plan.
+              Elegí el tratamiento y definí el precio total para este paciente. Al agregarlo,
+              el nombre, el código y el monto quedan congelados en el plan.
             </p>
             <form action={agregarPlanItemDesdeFormulario} className="mt-4 space-y-4">
               <input type="hidden" name="pacienteId" value={paciente.id} />
@@ -259,7 +259,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
                       <optgroup key={categoria.id} label={categoria.nombre}>
                         {categoria.tratamientos.filter((t) => t.activo).map((tratamiento) => (
                           <option key={tratamiento.id} value={tratamiento.id}>
-                            {tratamiento.codigo} · {tratamiento.nombre} ({formatearUSD(tratamiento.precioListaCentavos)})
+                            {tratamiento.codigo} · {tratamiento.aliasPersonal ?? tratamiento.nombre}
                           </option>
                         ))}
                       </optgroup>

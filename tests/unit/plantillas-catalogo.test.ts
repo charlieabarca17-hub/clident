@@ -29,10 +29,9 @@ describe("plantillas de tratamientos", () => {
     }
   });
 
-  it("los precios sugeridos son centavos enteros no negativos", () => {
+  it("la referencia no impone precios a las clínicas", () => {
     for (const tratamiento of PLANTILLAS_TRATAMIENTO) {
-      expect(Number.isInteger(tratamiento.precioSugeridoCentavos), tratamiento.codigo).toBe(true);
-      expect(tratamiento.precioSugeridoCentavos, tratamiento.codigo).toBeGreaterThanOrEqual(0);
+      expect("precioSugeridoCentavos" in tratamiento, tratamiento.codigo).toBe(false);
     }
   });
 

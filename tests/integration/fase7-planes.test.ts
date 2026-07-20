@@ -149,10 +149,10 @@ describe("precio congelado (ADR-006)", () => {
     const precioOriginal = item.precioUnitarioCentavos;
     const nombreOriginal = item.tratamientoNombre;
 
-    // La clínica sube el precio y renombra el tratamiento en el catálogo.
+    // La clínica renombra el tratamiento en el catálogo. El precio solo existe
+    // en el plan del paciente y ya quedó congelado al agregar el ítem.
     await actualizarTratamiento(ctx, resinaId, {
       nombre: "Restauración con resina compuesta premium",
-      precioListaCentavos: precioOriginal + 5000,
       activo: true,
     });
 

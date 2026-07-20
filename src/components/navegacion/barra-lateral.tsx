@@ -2,9 +2,30 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  Boxes,
+  CalendarDays,
+  LayoutDashboard,
+  PackageSearch,
+  Settings,
+  Users,
+  WalletCards,
+  type LucideIcon,
+} from "lucide-react";
 
-export type EnlaceNavegacion = { href: string; etiqueta: string };
+export type IconoNavegacion = "inicio" | "agenda" | "pacientes" | "catalogo" | "caja" | "inventario" | "configuracion";
+export type EnlaceNavegacion = { href: string; etiqueta: string; icono: IconoNavegacion };
 export type GrupoNavegacion = { titulo: string; enlaces: EnlaceNavegacion[] };
+
+const ICONOS: Record<IconoNavegacion, LucideIcon> = {
+  inicio: LayoutDashboard,
+  agenda: CalendarDays,
+  pacientes: Users,
+  catalogo: PackageSearch,
+  caja: WalletCards,
+  inventario: Boxes,
+  configuracion: Settings,
+};
 
 /**
  * Navegación global. Los grupos llegan YA FILTRADOS por permisos desde el
@@ -34,39 +55,20 @@ export function BarraLateral({ grupos, clinica }: { grupos: GrupoNavegacion[]; c
           <ul className="mt-2 space-y-0.5">
             {grupo.enlaces.map((enlace) => {
               const activo = esActivo(enlace.href);
+              const Icono = ICONOS[enlace.icono];
               return (
                 <li key={enlace.href}>
                   <Link
                     href={enlace.href}
                     aria-current={activo ? "page" : undefined}
-                    className={`relative block rounded-xl py-2 pl-5 pr-3 text-sm transition-colors ${
+                    className={`relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
                       activo
                         ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
                         : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                     }`}
                   >
-                    {/* El arco: un trazo menta curvo sobre el borde izquierdo. Es
-                        `aria-hidden` porque `aria-current="page"` ya comunica cuál
-                        es la sección activa a un lector de pantalla — y porque la
-                        marca no puede depender sólo del color (ver leyenda del
-                        odontograma: el color nunca es el único portador de sentido).
-                        Acá el refuerzo no cromático es la negrita y el fondo. */}
-                    {activo ? (
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 6 32"
-                        className="absolute left-1.5 top-1/2 h-5 w-1.5 -translate-y-1/2 overflow-visible"
-                        fill="none"
-                      >
-                        <path
-                          d="M5 1 C1 9, 1 23, 5 31"
-                          stroke="var(--rosa)"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    ) : null}
-                    {enlace.etiqueta}
+                    <Icono className="size-4 shrink-0" strokeWidth={activo ? 2.2 : 1.7} aria-hidden="true" />
+                    <span>{enlace.etiqueta}</span>
                   </Link>
                 </li>
               );
@@ -93,11 +95,14 @@ export function BarraLateral({ grupos, clinica }: { grupos: GrupoNavegacion[]; c
   return (
     <>
       {/* Escritorio: columna fija. */}
-      <aside className="hidden w-60 shrink-0 flex-col bg-sidebar p-4 lg:flex">
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar p-4 lg:flex">
         <Link href="/dashboard" className="rounded-xl px-3 py-2 transition-colors hover:bg-sidebar-accent/50">
           {marca("escritorio")}
         </Link>
         <div className="mt-6 flex-1 overflow-y-auto">{lista}</div>
+        <p className="border-t border-sidebar-border px-3 pt-4 text-[11px] leading-4 text-sidebar-foreground/45">
+          Tecnología clínica con información trazable.
+        </p>
       </aside>
 
       {/* Móvil y tablet: menú desplegable nativo. */}

@@ -3,7 +3,8 @@ type TratamientoDb = {
   categoriaId: string;
   codigo: string;
   nombre: string;
-  precioListaCentavos: number;
+  plantilla: { nombre: string } | null;
+  preferencias: { alias: string | null; favorito: boolean }[];
   activo: boolean;
   alcance: "DIENTE" | "BOCA";
   requiereDiente: boolean;
@@ -20,14 +21,16 @@ type CategoriaDb = {
   orden: number;
 };
 
-/** El precio viaja como centavos enteros; solo la UI lo formatea con formatearUSD. */
 export function toTratamientoDto(tratamiento: TratamientoDb) {
+  const preferencia = tratamiento.preferencias[0];
   return {
     id: tratamiento.id,
     categoriaId: tratamiento.categoriaId,
     codigo: tratamiento.codigo,
     nombre: tratamiento.nombre,
-    precioListaCentavos: tratamiento.precioListaCentavos,
+    nombreReferencia: tratamiento.plantilla?.nombre ?? null,
+    aliasPersonal: preferencia?.alias ?? null,
+    favorito: preferencia?.favorito ?? false,
     activo: tratamiento.activo,
     alcance: tratamiento.alcance,
     requiereDiente: tratamiento.requiereDiente,
