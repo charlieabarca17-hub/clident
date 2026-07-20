@@ -13,25 +13,33 @@ import {
 import type {
   ActualizarTratamientoInput,
   CrearTratamientoInput,
+  PreferenciaTratamientoInput,
 } from "@/lib/validation/catalogo";
 
 import { conTenant, type TenantTransaction } from "./tenant";
 
-const SELECT_TRATAMIENTO = {
-  id: true,
-  categoriaId: true,
-  codigo: true,
-  nombre: true,
-  precioListaCentavos: true,
-  activo: true,
-  alcance: true,
-  requiereDiente: true,
-  permiteMultiplesDientes: true,
-  permiteSuperficies: true,
-  permiteMultiplesSuperficies: true,
-  requiereDiagnostico: true,
-  permiteMultiplesSesiones: true,
-} satisfies Prisma.TratamientoSelect;
+function selectTratamiento(membresiaId: string) {
+  return {
+    id: true,
+    categoriaId: true,
+    codigo: true,
+    nombre: true,
+    activo: true,
+    alcance: true,
+    requiereDiente: true,
+    permiteMultiplesDientes: true,
+    permiteSuperficies: true,
+    permiteMultiplesSuperficies: true,
+    requiereDiagnostico: true,
+    permiteMultiplesSesiones: true,
+    plantilla: { select: { nombre: true } },
+    preferencias: {
+      where: { membresiaId },
+      select: { alias: true, favorito: true },
+      take: 1,
+    },
+  } satisfies Prisma.TratamientoSelect;
+}
 
 async function registrarAuditoria(
   tx: TenantTransaction,
@@ -61,7 +69,10 @@ export async function listarCatalogo(ctx: TenantContext) {
         id: true,
         nombre: true,
         orden: true,
-        tratamientos: { select: SELECT_TRATAMIENTO, orderBy: { codigo: "asc" } },
+        tratamientos: {
+          select: selectTratamiento(ctx.membresiaId),
+          orderBy: { codigo: "asc" },
+        },
       },
       orderBy: { orden: "asc" },
     });
@@ -86,16 +97,15 @@ export async function getTratamiento(ctx: TenantContext, id: string) {
   return conTenant(ctx, async (tx) => {
     const tratamiento = await tx.tratamiento.findFirst({
       where: { id, clinicaId: ctx.clinicaId },
-      select: SELECT_TRATAMIENTO,
+      select: selectTratamiento(ctx.membresiaId),
     });
     return tratamiento ? toTratamientoDto(tratamiento) : null;
   });
 }
 
 /**
- * Copia las plantillas globales al catálogo de la clínica. Es la ÚNICA vía de
- * inicialización: después de esto, el catálogo es propiedad de la clínica y las
- * plantillas no se vuelven a mirar (mismo criterio que los snapshots, ADR-006).
+ * Utilidad interna para pruebas y datos de demostración. La interfaz real agrega
+ * referencias una por una y nunca impone un catálogo completo.
  *
  * Solo corre sobre un catálogo vacío: no mezcla ni "resincroniza" nunca.
  */
@@ -145,9 +155,7 @@ export async function clonarCatalogo(ctx: TenantContext) {
         categoriaId: idPorPlantilla.get(plantilla.id)!,
         codigo: tratamiento.codigo,
         nombre: tratamiento.nombre,
-        // El precio sugerido se copia como precio de lista inicial; desde
-        // aquí, el precio es de la clínica y la plantilla deja de importar.
-        precioListaCentavos: tratamiento.precioSugeridoCentavos,
+        plantillaCodigo: tratamiento.codigo,
         alcance: tratamiento.alcance,
         requiereDiente: tratamiento.requiereDiente,
         permiteMultiplesDientes: tratamiento.permiteMultiplesDientes,
@@ -168,18 +176,170 @@ export async function clonarCatalogo(ctx: TenantContext) {
   });
 }
 
+export async function listarReferenciasCatalogo(ctx: TenantContext, busqueda = "") {
+  requirePermiso(ctx, "catalogo:read");
+  const termino = busqueda.trim();
+  return conTenant(ctx, async (tx) => {
+    const categorias = await tx.plantillaCategoria.findMany({
+      orderBy: { orden: "asc" },
+      select: {
+        id: true,
+        nombre: true,
+        orden: true,
+        plantillas: {
+          where: {
+            tratamientosClinica: { none: { clinicaId: ctx.clinicaId } },
+            ...(termino
+              ? {
+                  OR: [
+                    { codigo: { contains: termino, mode: "insensitive" as const } },
+                    { nombre: { contains: termino, mode: "insensitive" as const } },
+                  ],
+                }
+              : {}),
+          },
+          orderBy: { codigo: "asc" },
+          select: {
+            codigo: true,
+            nombre: true,
+            alcance: true,
+            requiereDiente: true,
+            permiteMultiplesSesiones: true,
+          },
+        },
+      },
+    });
+    return categorias.filter((categoria) => categoria.plantillas.length > 0);
+  });
+}
+
+export async function agregarReferenciaCatalogo(ctx: TenantContext, codigo: string) {
+  requirePermiso(ctx, "catalogo:write");
+  return conTenant(ctx, async (tx) => {
+    const referencia = await tx.plantillaTratamiento.findUnique({
+      where: { codigo },
+      select: {
+        codigo: true,
+        nombre: true,
+        alcance: true,
+        requiereDiente: true,
+        permiteMultiplesDientes: true,
+        permiteSuperficies: true,
+        permiteMultiplesSuperficies: true,
+        requiereDiagnostico: true,
+        permiteMultiplesSesiones: true,
+        categoria: { select: { nombre: true, orden: true } },
+      },
+    });
+    if (!referencia) throw new Error("El tratamiento de referencia ya no existe.");
+
+    const existente = await tx.tratamiento.findUnique({
+      where: { clinicaId_codigo: { clinicaId: ctx.clinicaId, codigo: referencia.codigo } },
+      select: { id: true },
+    });
+    if (existente) return getTratamientoInterno(tx, ctx, existente.id);
+
+    const categoria = await tx.categoriaTratamiento.upsert({
+      where: {
+        clinicaId_nombre: { clinicaId: ctx.clinicaId, nombre: referencia.categoria.nombre },
+      },
+      update: {},
+      create: {
+        clinicaId: ctx.clinicaId,
+        nombre: referencia.categoria.nombre,
+        orden: referencia.categoria.orden,
+      },
+      select: { id: true },
+    });
+    const tratamiento = await tx.tratamiento.create({
+      data: {
+        clinicaId: ctx.clinicaId,
+        categoriaId: categoria.id,
+        plantillaCodigo: referencia.codigo,
+        codigo: referencia.codigo,
+        nombre: referencia.nombre,
+        alcance: referencia.alcance,
+        requiereDiente: referencia.requiereDiente,
+        permiteMultiplesDientes: referencia.permiteMultiplesDientes,
+        permiteSuperficies: referencia.permiteSuperficies,
+        permiteMultiplesSuperficies: referencia.permiteMultiplesSuperficies,
+        requiereDiagnostico: referencia.requiereDiagnostico,
+        permiteMultiplesSesiones: referencia.permiteMultiplesSesiones,
+      },
+      select: selectTratamiento(ctx.membresiaId),
+    });
+    await registrarAuditoria(tx, ctx, "REFERENCIA_AGREGADA", tratamiento.id, {
+      codigo: referencia.codigo,
+    });
+    return toTratamientoDto(tratamiento);
+  });
+}
+
+async function getTratamientoInterno(tx: TenantTransaction, ctx: TenantContext, id: string) {
+  const tratamiento = await tx.tratamiento.findFirst({
+    where: { id, clinicaId: ctx.clinicaId },
+    select: selectTratamiento(ctx.membresiaId),
+  });
+  return tratamiento ? toTratamientoDto(tratamiento) : null;
+}
+
+export async function guardarPreferenciaTratamiento(
+  ctx: TenantContext,
+  tratamientoId: string,
+  input: PreferenciaTratamientoInput,
+) {
+  requirePermiso(ctx, "catalogo:read");
+  return conTenant(ctx, async (tx) => {
+    const tratamiento = await tx.tratamiento.findFirst({
+      where: { id: tratamientoId, clinicaId: ctx.clinicaId },
+      select: { id: true },
+    });
+    if (!tratamiento) return null;
+    await tx.preferenciaTratamiento.upsert({
+      where: {
+        clinicaId_membresiaId_tratamientoId: {
+          clinicaId: ctx.clinicaId,
+          membresiaId: ctx.membresiaId,
+          tratamientoId,
+        },
+      },
+      update: { alias: input.alias, favorito: input.favorito },
+      create: {
+        clinicaId: ctx.clinicaId,
+        membresiaId: ctx.membresiaId,
+        tratamientoId,
+        alias: input.alias,
+        favorito: input.favorito,
+      },
+    });
+    await registrarAuditoria(tx, ctx, "PREFERENCIA_TRATAMIENTO_ACTUALIZADA", tratamientoId, {
+      alias: input.alias,
+      favorito: input.favorito,
+    });
+    return getTratamientoInterno(tx, ctx, tratamientoId);
+  });
+}
+
 export async function crearTratamiento(ctx: TenantContext, input: CrearTratamientoInput) {
   requirePermiso(ctx, "catalogo:write");
   return conTenant(ctx, async (tx) => {
-    // La FK compuesta ya garantiza que la categoría sea de esta clínica; el
-    // findFirst existe para responder NOT_FOUND legible en vez de un error de FK.
-    const categoria = await tx.categoriaTratamiento.findFirst({
-      where: { id: input.categoriaId, clinicaId: ctx.clinicaId },
+    const categoriaExistente = await tx.categoriaTratamiento.findUnique({
+      where: {
+        clinicaId_nombre: { clinicaId: ctx.clinicaId, nombre: input.categoriaNombre },
+      },
       select: { id: true },
     });
-    if (!categoria) {
-      throw new Error("La categoría indicada no existe.");
-    }
+    const categoria = categoriaExistente ?? await tx.categoriaTratamiento.create({
+      data: {
+        clinicaId: ctx.clinicaId,
+        nombre: input.categoriaNombre,
+        orden: ((await tx.categoriaTratamiento.aggregate({
+          where: { clinicaId: ctx.clinicaId },
+          _max: { orden: true },
+        }))._max.orden ?? 0) + 1,
+      },
+      select: { id: true },
+    });
 
     const tratamiento = await tx.tratamiento.create({
       data: {
@@ -187,7 +347,6 @@ export async function crearTratamiento(ctx: TenantContext, input: CrearTratamien
         categoriaId: categoria.id,
         codigo: input.codigo,
         nombre: input.nombre,
-        precioListaCentavos: input.precioListaCentavos,
         alcance: input.alcance,
         requiereDiente: input.requiereDiente,
         permiteMultiplesDientes: input.permiteMultiplesDientes,
@@ -196,7 +355,7 @@ export async function crearTratamiento(ctx: TenantContext, input: CrearTratamien
         requiereDiagnostico: input.requiereDiagnostico,
         permiteMultiplesSesiones: input.permiteMultiplesSesiones,
       },
-      select: SELECT_TRATAMIENTO,
+      select: selectTratamiento(ctx.membresiaId),
     });
     await registrarAuditoria(tx, ctx, "TRATAMIENTO_CREADO", tratamiento.id);
     return toTratamientoDto(tratamiento);
@@ -204,9 +363,8 @@ export async function crearTratamiento(ctx: TenantContext, input: CrearTratamien
 }
 
 /**
- * Edita nombre, precio de lista y bandera de activo. Nada más: código y banderas
- * de comportamiento son la identidad del tratamiento. Cambiar el precio NUNCA
- * toca planes existentes — ellos tienen su propio precio congelado (ADR-006).
+ * Edita el nombre que utiliza la clínica y la disponibilidad. Código y banderas
+ * de comportamiento siguen definiendo la identidad del tratamiento.
  */
 export async function actualizarTratamiento(
   ctx: TenantContext,
@@ -217,7 +375,7 @@ export async function actualizarTratamiento(
   return conTenant(ctx, async (tx) => {
     const existente = await tx.tratamiento.findFirst({
       where: { id, clinicaId: ctx.clinicaId },
-      select: { id: true, nombre: true, precioListaCentavos: true, activo: true },
+      select: { id: true, nombre: true, activo: true },
     });
     if (!existente) return null;
 
@@ -225,20 +383,17 @@ export async function actualizarTratamiento(
       where: { clinicaId_id: { clinicaId: ctx.clinicaId, id: existente.id } },
       data: {
         nombre: input.nombre,
-        precioListaCentavos: input.precioListaCentavos,
         activo: input.activo,
       },
-      select: SELECT_TRATAMIENTO,
+      select: selectTratamiento(ctx.membresiaId),
     });
     await registrarAuditoria(tx, ctx, "TRATAMIENTO_ACTUALIZADO", tratamiento.id, {
       antes: {
         nombre: existente.nombre,
-        precioListaCentavos: existente.precioListaCentavos,
         activo: existente.activo,
       },
       despues: {
         nombre: tratamiento.nombre,
-        precioListaCentavos: tratamiento.precioListaCentavos,
         activo: tratamiento.activo,
       },
     });

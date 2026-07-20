@@ -8,11 +8,14 @@ import { PLANTILLAS_TRATAMIENTO } from "../../prisma/seed/tratamientos.ts";
 import type { TenantContext } from "@/server/auth/types";
 import { db } from "@/server/db/client";
 import {
+  agregarReferenciaCatalogo,
   actualizarTratamiento,
   clonarCatalogo,
   crearTratamiento,
   getTratamiento,
+  guardarPreferenciaTratamiento,
   listarCatalogo,
+  listarReferenciasCatalogo,
 } from "@/server/db/catalogo";
 
 const appUrl = process.env.TEST_DATABASE_URL!;
@@ -104,7 +107,7 @@ describe("plantillas globales", () => {
       ),
     ).rejects.toMatchObject({ code: "42501" });
     await expect(
-      app.query(`UPDATE plantillas_tratamiento SET precio_sugerido_centavos = 1`),
+      app.query(`UPDATE plantillas_tratamiento SET nombre = 'Hackeo'`),
     ).rejects.toMatchObject({ code: "42501" });
   });
 });
@@ -140,21 +143,20 @@ describe("clonarCatalogo", () => {
     expect(sinContexto).toBe(0);
   });
 
-  it("cambiar un precio en A no toca el mismo tratamiento en B", async () => {
+  it("renombrar en A no toca el mismo tratamiento en B", async () => {
     const resinaA = (await listarCatalogo(ctxA))
       .flatMap((c) => c.tratamientos)
       .find((t) => t.codigo === "RES-01")!;
     const actualizado = await actualizarTratamiento(ctxA, resinaA.id, {
-      nombre: resinaA.nombre,
-      precioListaCentavos: 9999,
+      nombre: "Nombre usado solo por la clínica A",
       activo: true,
     });
-    expect(actualizado?.precioListaCentavos).toBe(9999);
+    expect(actualizado?.nombre).toBe("Nombre usado solo por la clínica A");
 
     const resinaB = (await listarCatalogo(ctxB))
       .flatMap((c) => c.tratamientos)
       .find((t) => t.codigo === "RES-01")!;
-    expect(resinaB.precioListaCentavos).not.toBe(9999);
+    expect(resinaB.nombre).not.toBe("Nombre usado solo por la clínica A");
   });
 });
 
@@ -163,7 +165,7 @@ describe("catálogo por clínica", () => {
     const base = {
       codigo: "ZZZ-01",
       nombre: "Tratamiento de prueba",
-      precioListaCentavos: 1000,
+      categoriaNombre: "Personalizados",
       alcance: "BOCA" as const,
       requiereDiente: false,
       permiteMultiplesDientes: false,
@@ -172,36 +174,23 @@ describe("catálogo por clínica", () => {
       requiereDiagnostico: false,
       permiteMultiplesSesiones: false,
     };
-    const categoriaA = (await listarCatalogo(ctxA))[0];
-    const creado = await crearTratamiento(ctxA, { ...base, categoriaId: categoriaA.id });
+    const creado = await crearTratamiento(ctxA, base);
     expect(creado.codigo).toBe("ZZZ-01");
 
     await expect(
-      crearTratamiento(ctxA, { ...base, categoriaId: categoriaA.id }),
+      crearTratamiento(ctxA, base),
     ).rejects.toMatchObject({ code: "P2002" });
 
-    const categoriaB = (await listarCatalogo(ctxB))[0];
-    const creadoEnB = await crearTratamiento(ctxB, { ...base, categoriaId: categoriaB.id });
+    const creadoEnB = await crearTratamiento(ctxB, base);
     expect(creadoEnB.codigo).toBe("ZZZ-01");
   });
 
-  it("no acepta una categoría de otra clínica", async () => {
-    const categoriaB = (await listarCatalogo(ctxB))[0];
-    await expect(
-      crearTratamiento(ctxA, {
-        categoriaId: categoriaB.id,
-        codigo: "ZZZ-02",
-        nombre: "Cruce de clínicas",
-        precioListaCentavos: 1000,
-        alcance: "BOCA",
-        requiereDiente: false,
-        permiteMultiplesDientes: false,
-        permiteSuperficies: false,
-        permiteMultiplesSuperficies: false,
-        requiereDiagnostico: false,
-        permiteMultiplesSesiones: false,
-      }),
-    ).rejects.toThrow(/no existe/);
+  it("crea o reutiliza la categoría por nombre dentro de cada clínica", async () => {
+    const categoriasA = (await listarCatalogo(ctxA)).filter((c) => c.nombre === "Personalizados");
+    const categoriasB = (await listarCatalogo(ctxB)).filter((c) => c.nombre === "Personalizados");
+    expect(categoriasA).toHaveLength(1);
+    expect(categoriasB).toHaveLength(1);
+    expect(categoriasA[0].id).not.toBe(categoriasB[0].id);
   });
 
   it("cross-tenant devuelve null, no FORBIDDEN", async () => {
@@ -209,7 +198,7 @@ describe("catálogo por clínica", () => {
     expect(await getTratamiento(ctxA, tratamientoB.id)).toBeNull();
   });
 
-  it("los CHECK de la base rechazan banderas incoherentes y precios negativos", async () => {
+  it("los CHECK de la base rechazan banderas incoherentes", async () => {
     const categoriaA = await conContexto({ clinicaId: clinicaA.clinicaId }, async (cliente) => {
       const filas = await cliente.query("SELECT id FROM categorias_tratamiento LIMIT 1");
       return filas.rows[0].id as string;
@@ -220,31 +209,17 @@ describe("catálogo por clínica", () => {
       conContexto({ clinicaId: clinicaA.clinicaId }, (cliente) =>
         cliente.query(
           `INSERT INTO tratamientos (
-             id, clinica_id, categoria_id, codigo, nombre, precio_lista_centavos, alcance,
+             id, clinica_id, categoria_id, codigo, nombre, alcance,
              requiere_diente, permite_multiples_dientes, permite_superficies,
              permite_multiples_superficies, requiere_diagnostico, permite_multiples_sesiones,
              actualizado_en
-           ) VALUES ($1, $2, $3, 'MAL-01', 'Incoherente', 100, 'BOCA',
+           ) VALUES ($1, $2, $3, 'MAL-01', 'Incoherente', 'BOCA',
                      false, false, true, false, false, false, CURRENT_TIMESTAMP)`,
           [randomUUID(), clinicaA.clinicaId, categoriaA],
         ),
       ),
     ).rejects.toMatchObject({ code: "23514" });
 
-    await expect(
-      conContexto({ clinicaId: clinicaA.clinicaId }, (cliente) =>
-        cliente.query(
-          `INSERT INTO tratamientos (
-             id, clinica_id, categoria_id, codigo, nombre, precio_lista_centavos, alcance,
-             requiere_diente, permite_multiples_dientes, permite_superficies,
-             permite_multiples_superficies, requiere_diagnostico, permite_multiples_sesiones,
-             actualizado_en
-           ) VALUES ($1, $2, $3, 'MAL-02', 'Precio negativo', -1, 'BOCA',
-                     false, false, false, false, false, false, CURRENT_TIMESTAMP)`,
-          [randomUUID(), clinicaA.clinicaId, categoriaA],
-        ),
-      ),
-    ).rejects.toMatchObject({ code: "23514" });
   });
 
   it("desactivar no borra: la fila sigue y DELETE está negado por privilegio", async () => {
@@ -253,7 +228,6 @@ describe("catálogo por clínica", () => {
       .find((t) => t.codigo === "ZZZ-01")!;
     const desactivado = await actualizarTratamiento(ctxA, tratamiento.id, {
       nombre: tratamiento.nombre,
-      precioListaCentavos: tratamiento.precioListaCentavos,
       activo: false,
     });
     expect(desactivado?.activo).toBe(false);
@@ -276,5 +250,49 @@ describe("catálogo por clínica", () => {
          AND udt_name = 'Superficie'`,
     );
     expect(resultado.rows).toEqual([]);
+  });
+
+  it("estructuralmente no existe un precio en el catálogo", async () => {
+    const resultado = await migrator.query(
+      `SELECT table_name, column_name FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND (table_name, column_name) IN (
+           ('tratamientos', 'precio_lista_centavos'),
+           ('plantillas_tratamiento', 'precio_sugerido_centavos')
+         )`,
+    );
+    expect(resultado.rows).toEqual([]);
+  });
+});
+
+describe("selección y preferencias personales", () => {
+  it("permite empezar en blanco, agregar una referencia y ocultarla de la biblioteca", async () => {
+    const clinica = await crearClinica("Catálogo vacío", "catalogo-vacio@clident.test");
+    const ctx = contexto(clinica);
+    expect(await listarCatalogo(ctx)).toEqual([]);
+
+    const referencias = await listarReferenciasCatalogo(ctx, "END-01");
+    expect(referencias.flatMap((categoria) => categoria.plantillas).map((t) => t.codigo)).toContain("END-01");
+
+    const agregado = await agregarReferenciaCatalogo(ctx, "END-01");
+    expect(agregado?.codigo).toBe("END-01");
+    expect(await agregarReferenciaCatalogo(ctx, "END-01")).toMatchObject({ id: agregado?.id });
+
+    const despues = await listarReferenciasCatalogo(ctx, "END-01");
+    expect(despues.flatMap((categoria) => categoria.plantillas)).toEqual([]);
+  });
+
+  it("guarda alias y favorito por membresía sin cambiar el nombre compartido", async () => {
+    const tratamiento = (await listarCatalogo(ctxA)).flatMap((c) => c.tratamientos)[0];
+    const preferido = await guardarPreferenciaTratamiento(ctxA, tratamiento.id, {
+      alias: "Mi nombre habitual",
+      favorito: true,
+    });
+    expect(preferido).toMatchObject({
+      nombre: tratamiento.nombre,
+      aliasPersonal: "Mi nombre habitual",
+      favorito: true,
+    });
+    expect(await getTratamiento(ctxB, tratamiento.id)).toBeNull();
   });
 });

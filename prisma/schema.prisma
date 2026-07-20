@@ -134,6 +134,13 @@ enum TipoMovimientoInventario {
   AJUSTE
 }
 
+enum EstadoSincronizacionCalendario {
+  PENDIENTE
+  SINCRONIZADA
+  ERROR
+  CANCELADA
+}
+
 // Las 16 condiciones clínicas del catálogo (referencia de producto validada).
 enum CondicionDental {
   SANO
@@ -162,33 +169,36 @@ model Clinica {
   creadoEn      DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn DateTime      @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  sucursales Sucursal[]
-  membresias Membresia[]
-  auditorias Auditoria[]
-  pacientes  Paciente[]
-  citas      Cita[]      @relation("CitaClinica")
-  expedientes                     Expediente[]
-  alertasMedicas                  AlertaMedica[]
-  desactivacionesAlertasMedicas   DesactivacionAlertaMedica[]
-  categoriasTratamiento           CategoriaTratamiento[]
-  tratamientos                    Tratamiento[]
-  diagnosticos                    Diagnostico[]
-  diagnosticoDientes              DiagnosticoDiente[]
-  eventosOdontograma              EventoOdontograma[]
-  estadosSuperficie               EstadoSuperficie[]
-  planesTratamiento               PlanTratamiento[]
-  planItems                       PlanItem[]
-  planItemDientes                 PlanItemDiente[]
-  procedimientos                  Procedimiento[]
-  procedimientoDientes            ProcedimientoDiente[]
-  enmiendasProcedimiento          EnmiendaProcedimiento[]
-  cargos                          Cargo[]
-  lineasCargo                     LineaCargo[]
-  pagos                           Pago[]
-  aplicacionesPago                AplicacionPago[]
-  documentosFiscales              DocumentoFiscal[]
-  materiales                      Material[]
-  movimientosInventario           MovimientoInventario[]
+  sucursales                     Sucursal[]
+  membresias                     Membresia[]
+  auditorias                     Auditoria[]
+  pacientes                      Paciente[]
+  citas                          Cita[]                      @relation("CitaClinica")
+  expedientes                    Expediente[]
+  alertasMedicas                 AlertaMedica[]
+  desactivacionesAlertasMedicas  DesactivacionAlertaMedica[]
+  categoriasTratamiento          CategoriaTratamiento[]
+  tratamientos                   Tratamiento[]
+  diagnosticos                   Diagnostico[]
+  diagnosticoDientes             DiagnosticoDiente[]
+  eventosOdontograma             EventoOdontograma[]
+  estadosSuperficie              EstadoSuperficie[]
+  planesTratamiento              PlanTratamiento[]
+  planItems                      PlanItem[]
+  planItemDientes                PlanItemDiente[]
+  procedimientos                 Procedimiento[]
+  procedimientoDientes           ProcedimientoDiente[]
+  enmiendasProcedimiento         EnmiendaProcedimiento[]
+  cargos                         Cargo[]
+  lineasCargo                    LineaCargo[]
+  pagos                          Pago[]
+  aplicacionesPago               AplicacionPago[]
+  documentosFiscales             DocumentoFiscal[]
+  materiales                     Material[]
+  movimientosInventario          MovimientoInventario[]
+  preferenciasTratamiento        PreferenciaTratamiento[]
+  conexionesGoogleCalendar       ConexionGoogleCalendar[]
+  sincronizacionesGoogleCalendar SincronizacionCitaGoogle[]
 
   @@map("clinicas")
 }
@@ -200,12 +210,12 @@ model Sucursal {
   creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  citas   Cita[]  @relation("CitaSucursal")
+  clinica        Clinica         @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  citas          Cita[]          @relation("CitaSucursal")
   procedimientos Procedimiento[] @relation("ProcedimientoSucursal")
-  cargos  Cargo[] @relation("CargoSucursal")
-  pagos   Pago[]  @relation("PagoSucursal")
-  materiales Material[] @relation("MaterialSucursal")
+  cargos         Cargo[]         @relation("CargoSucursal")
+  pagos          Pago[]          @relation("PagoSucursal")
+  materiales     Material[]      @relation("MaterialSucursal")
 
   @@unique([clinicaId, id])
   @@index([clinicaId])
@@ -241,27 +251,29 @@ model Membresia {
   creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  citasComoOdontologo          Cita[]                       @relation("CitaOdontologo")
-  alertasCreadas               AlertaMedica[]               @relation("AlertaCreadaPor")
+  clinica                       Clinica                     @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  usuario                       Usuario                     @relation(fields: [usuarioId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  citasComoOdontologo           Cita[]                      @relation("CitaOdontologo")
+  alertasCreadas                AlertaMedica[]              @relation("AlertaCreadaPor")
   desactivacionesAlertasMedicas DesactivacionAlertaMedica[] @relation("AlertaDesactivadaPor")
-  diagnosticosRegistrados      Diagnostico[]                @relation("DiagnosticoRegistradoPor")
-  diagnosticosAnulados         Diagnostico[]                @relation("DiagnosticoAnuladoPor")
+  diagnosticosRegistrados       Diagnostico[]               @relation("DiagnosticoRegistradoPor")
+  diagnosticosAnulados          Diagnostico[]               @relation("DiagnosticoAnuladoPor")
   eventosOdontogramaRegistrados EventoOdontograma[]         @relation("EventoOdontogramaRegistradoPor")
-  planesCreados                PlanTratamiento[]            @relation("PlanCreadoPor")
-  planesAnulados               PlanTratamiento[]            @relation("PlanAnuladoPor")
-  planItemsCreados             PlanItem[]                   @relation("PlanItemCreadoPor")
-  procedimientosComoOdontologo Procedimiento[]              @relation("ProcedimientoOdontologo")
-  procedimientosCreados        Procedimiento[]              @relation("ProcedimientoCreadoPor")
-  procedimientosAnulados       Procedimiento[]              @relation("ProcedimientoAnuladoPor")
-  enmiendasCreadas             EnmiendaProcedimiento[]      @relation("EnmiendaCreadaPor")
-  cargosCreados                Cargo[]                      @relation("CargoCreadoPor")
-  cargosAnulados               Cargo[]                      @relation("CargoAnuladoPor")
-  pagosCreados                 Pago[]                       @relation("PagoCreadoPor")
-  pagosAnulados                Pago[]                       @relation("PagoAnuladoPor")
-  aplicacionesCreadas          AplicacionPago[]             @relation("AplicacionCreadaPor")
-  movimientosInventario        MovimientoInventario[]       @relation("MovimientoRegistradoPor")
+  planesCreados                 PlanTratamiento[]           @relation("PlanCreadoPor")
+  planesAnulados                PlanTratamiento[]           @relation("PlanAnuladoPor")
+  planItemsCreados              PlanItem[]                  @relation("PlanItemCreadoPor")
+  procedimientosComoOdontologo  Procedimiento[]             @relation("ProcedimientoOdontologo")
+  procedimientosCreados         Procedimiento[]             @relation("ProcedimientoCreadoPor")
+  procedimientosAnulados        Procedimiento[]             @relation("ProcedimientoAnuladoPor")
+  enmiendasCreadas              EnmiendaProcedimiento[]     @relation("EnmiendaCreadaPor")
+  cargosCreados                 Cargo[]                     @relation("CargoCreadoPor")
+  cargosAnulados                Cargo[]                     @relation("CargoAnuladoPor")
+  pagosCreados                  Pago[]                      @relation("PagoCreadoPor")
+  pagosAnulados                 Pago[]                      @relation("PagoAnuladoPor")
+  aplicacionesCreadas           AplicacionPago[]            @relation("AplicacionCreadaPor")
+  movimientosInventario         MovimientoInventario[]      @relation("MovimientoRegistradoPor")
+  preferenciasTratamiento       PreferenciaTratamiento[]
+  conexionGoogleCalendar        ConexionGoogleCalendar?
 
   @@unique([usuarioId, clinicaId])
   @@unique([clinicaId, id])
@@ -290,35 +302,35 @@ model Auditoria {
 }
 
 model Paciente {
-  id                          String                    @id @default(cuid())
-  clinicaId                   String                    @map("clinica_id")
-  nombres                     String
-  apellidos                   String
-  fechaNacimiento             DateTime                  @map("fecha_nacimiento") @db.Date
-  dui                         String?
-  duiEnmascarado              String?                   @default(dbgenerated()) @map("dui_enmascarado")
-  telefono                    String
-  correo                      String?
-  direccion                   String?
-  responsableNombre           String?                   @map("responsable_nombre")
-  responsableTipoDocumento    TipoDocumentoResponsable? @map("responsable_tipo_documento")
-  responsableNumDocumento     String?                   @map("responsable_num_documento")
-  responsableTelefono         String?                   @map("responsable_telefono")
-  responsableParentesco       String?                   @map("responsable_parentesco")
-  contactoEmergenciaNombre    String                    @map("contacto_emergencia_nombre")
-  contactoEmergenciaTelefono  String                    @map("contacto_emergencia_telefono")
-  creadoEn                    DateTime                  @default(now()) @map("creado_en") @db.Timestamptz(3)
-  actualizadoEn               DateTime                  @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+  id                         String                    @id @default(cuid())
+  clinicaId                  String                    @map("clinica_id")
+  nombres                    String
+  apellidos                  String
+  fechaNacimiento            DateTime                  @map("fecha_nacimiento") @db.Date
+  dui                        String?
+  duiEnmascarado             String?                   @default(dbgenerated()) @map("dui_enmascarado")
+  telefono                   String
+  correo                     String?
+  direccion                  String?
+  responsableNombre          String?                   @map("responsable_nombre")
+  responsableTipoDocumento   TipoDocumentoResponsable? @map("responsable_tipo_documento")
+  responsableNumDocumento    String?                   @map("responsable_num_documento")
+  responsableTelefono        String?                   @map("responsable_telefono")
+  responsableParentesco      String?                   @map("responsable_parentesco")
+  contactoEmergenciaNombre   String                    @map("contacto_emergencia_nombre")
+  contactoEmergenciaTelefono String                    @map("contacto_emergencia_telefono")
+  creadoEn                   DateTime                  @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn              DateTime                  @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  clinica Clinica @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  citas   Cita[]  @relation("CitaPaciente")
-  expediente Expediente?
+  clinica            Clinica             @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  citas              Cita[]              @relation("CitaPaciente")
+  expediente         Expediente?
   eventosOdontograma EventoOdontograma[]
   estadosSuperficie  EstadoSuperficie[]
   planesTratamiento  PlanTratamiento[]
-  procedimientos     Procedimiento[]    @relation("ProcedimientoPaciente")
-  cargos             Cargo[]            @relation("CargoPaciente")
-  pagos              Pago[]             @relation("PagoPaciente")
+  procedimientos     Procedimiento[]     @relation("ProcedimientoPaciente")
+  cargos             Cargo[]             @relation("CargoPaciente")
+  pagos              Pago[]              @relation("PagoPaciente")
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, dui])
@@ -337,9 +349,9 @@ model Expediente {
   creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  clinica  Clinica  @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  paciente Paciente @relation(fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  alertas  AlertaMedica[]
+  clinica      Clinica        @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  paciente     Paciente       @relation(fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  alertas      AlertaMedica[]
   diagnosticos Diagnostico[]
 
   @@unique([clinicaId, id])
@@ -350,17 +362,17 @@ model Expediente {
 // Una alerta registra una advertencia clínica visible solo a personal clínico.
 // Es append-only: su desactivación es otro registro inmutable, no un UPDATE.
 model AlertaMedica {
-  id              String   @id @default(cuid())
-  clinicaId       String   @map("clinica_id")
-  expedienteId    String   @map("expediente_id")
-  titulo          String
-  detalle         String?
-  creadaPorId     String   @map("creada_por_id")
-  creadoEn        DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  id           String   @id @default(cuid())
+  clinicaId    String   @map("clinica_id")
+  expedienteId String   @map("expediente_id")
+  titulo       String
+  detalle      String?
+  creadaPorId  String   @map("creada_por_id")
+  creadoEn     DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
 
-  clinica       Clinica                     @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  expediente    Expediente                  @relation(fields: [clinicaId, expedienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  creadaPor     Membresia                   @relation("AlertaCreadaPor", fields: [clinicaId, creadaPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  clinica       Clinica                    @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  expediente    Expediente                 @relation(fields: [clinicaId, expedienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  creadaPor     Membresia                  @relation("AlertaCreadaPor", fields: [clinicaId, creadaPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   desactivacion DesactivacionAlertaMedica?
 
   @@unique([clinicaId, id])
@@ -378,9 +390,9 @@ model DesactivacionAlertaMedica {
   motivoDesactivacion String   @map("motivo_desactivacion")
   desactivadaEn       DateTime @default(now()) @map("desactivada_en") @db.Timestamptz(3)
 
-  clinica          Clinica       @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  alerta           AlertaMedica  @relation(fields: [clinicaId, alertaId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  desactivadaPor   Membresia     @relation("AlertaDesactivadaPor", fields: [clinicaId, desactivadaPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  clinica        Clinica      @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  alerta         AlertaMedica @relation(fields: [clinicaId, alertaId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  desactivadaPor Membresia    @relation("AlertaDesactivadaPor", fields: [clinicaId, desactivadaPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, alertaId])
@@ -401,10 +413,11 @@ model Cita {
   creadoEn             DateTime   @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn        DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  clinica    Clinica    @relation("CitaClinica", fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  sucursal   Sucursal   @relation("CitaSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  paciente   Paciente   @relation("CitaPaciente", fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  odontologo Membresia @relation("CitaOdontologo", fields: [clinicaId, odontologoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  clinica                Clinica                    @relation("CitaClinica", fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sucursal               Sucursal                   @relation("CitaSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  paciente               Paciente                   @relation("CitaPaciente", fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  odontologo             Membresia                  @relation("CitaOdontologo", fields: [clinicaId, odontologoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  sincronizacionesGoogle SincronizacionCitaGoogle[]
 
   @@unique([clinicaId, id])
   @@index([clinicaId, inicioEn])
@@ -413,8 +426,8 @@ model Cita {
   @@map("citas")
 }
 
-// Plantillas de plataforma (REFERENCIA_GLOBAL): se COPIAN al catálogo de cada
-// clínica con clonarCatalogo(). La app solo las lee; las siembra el migrador.
+// Referencia odontológica global. No contiene precios: cada clínica selecciona
+// lo que ofrece y cada plan fija el monto acordado para ese paciente.
 model PlantillaCategoria {
   id     String @id
   nombre String
@@ -429,7 +442,6 @@ model PlantillaTratamiento {
   codigo                      String             @id
   categoriaId                 String             @map("categoria_id")
   nombre                      String
-  precioSugeridoCentavos      Int                @map("precio_sugerido_centavos")
   alcance                     AlcanceTratamiento
   requiereDiente              Boolean            @map("requiere_diente")
   permiteMultiplesDientes     Boolean            @map("permite_multiples_dientes")
@@ -438,7 +450,8 @@ model PlantillaTratamiento {
   requiereDiagnostico         Boolean            @map("requiere_diagnostico")
   permiteMultiplesSesiones    Boolean            @map("permite_multiples_sesiones")
 
-  categoria PlantillaCategoria @relation(fields: [categoriaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  categoria           PlantillaCategoria @relation(fields: [categoriaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tratamientosClinica Tratamiento[]
 
   @@map("plantillas_tratamiento")
 }
@@ -460,16 +473,16 @@ model CategoriaTratamiento {
   @@map("categorias_tratamiento")
 }
 
-// El catálogo maestro de la clínica. Sin columna de superficie a propósito
-// (REGLAS-DE-NEGOCIO §4.7): las superficies existen solo al asignar el
-// tratamiento a un paciente. El precio de un plan NUNCA se lee de aquí (ADR-006).
+// Catálogo compartido de la clínica. No guarda precios: el odontólogo define el
+// total acordado al preparar cada plan. Puede partir de una referencia global o
+// ser un tratamiento personalizado de la clínica.
 model Tratamiento {
   id                          String             @id @default(cuid())
   clinicaId                   String             @map("clinica_id")
   categoriaId                 String             @map("categoria_id")
   codigo                      String
   nombre                      String
-  precioListaCentavos         Int                @map("precio_lista_centavos")
+  plantillaCodigo             String?            @map("plantilla_codigo")
   activo                      Boolean            @default(true)
   alcance                     AlcanceTratamiento
   requiereDiente              Boolean            @map("requiere_diente")
@@ -481,15 +494,88 @@ model Tratamiento {
   creadoEn                    DateTime           @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn               DateTime           @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  clinica   Clinica              @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  categoria CategoriaTratamiento @relation(fields: [clinicaId, categoriaId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  planItems PlanItem[]
-  procedimientos Procedimiento[] @relation("ProcedimientoTratamiento")
+  clinica        Clinica                  @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  categoria      CategoriaTratamiento     @relation(fields: [clinicaId, categoriaId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  plantilla      PlantillaTratamiento?    @relation(fields: [plantillaCodigo], references: [codigo], onDelete: Restrict, onUpdate: Restrict)
+  planItems      PlanItem[]
+  procedimientos Procedimiento[]          @relation("ProcedimientoTratamiento")
+  preferencias   PreferenciaTratamiento[]
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, codigo])
   @@index([clinicaId, categoriaId])
+  @@index([plantillaCodigo])
   @@map("tratamientos")
+}
+
+// Alias y favoritos personales. No crean tratamientos duplicados ni cambian lo
+// que queda registrado en planes, procedimientos o documentos del paciente.
+model PreferenciaTratamiento {
+  id            String   @id @default(cuid())
+  clinicaId     String   @map("clinica_id")
+  membresiaId   String   @map("membresia_id")
+  tratamientoId String   @map("tratamiento_id")
+  alias         String?
+  favorito      Boolean  @default(false)
+  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica     Clinica     @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  membresia   Membresia   @relation(fields: [clinicaId, membresiaId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  tratamiento Tratamiento @relation(fields: [clinicaId, tratamientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, membresiaId, tratamientoId])
+  @@index([clinicaId, tratamientoId])
+  @@map("preferencias_tratamiento")
+}
+
+// Una conexión individual por membresía. El refresh token se cifra en la
+// aplicación antes de llegar a PostgreSQL y nunca se expone al navegador.
+model ConexionGoogleCalendar {
+  id                  String   @id @default(cuid())
+  clinicaId           String   @map("clinica_id")
+  membresiaId         String   @map("membresia_id")
+  correoGoogle        String   @map("correo_google")
+  refreshTokenCifrado String   @map("refresh_token_cifrado")
+  calendarioId        String   @map("calendario_id")
+  calendarioNombre    String   @default("CLIDENT") @map("calendario_nombre")
+  scopes              String[]
+  activa              Boolean  @default(true)
+  conectadoEn         DateTime @default(now()) @map("conectado_en") @db.Timestamptz(3)
+  actualizadoEn       DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica          Clinica                    @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  membresia        Membresia                  @relation(fields: [clinicaId, membresiaId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  sincronizaciones SincronizacionCitaGoogle[]
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, membresiaId])
+  @@index([clinicaId])
+  @@map("conexiones_google_calendar")
+}
+
+model SincronizacionCitaGoogle {
+  id             String                         @id @default(cuid())
+  clinicaId      String                         @map("clinica_id")
+  citaId         String                         @map("cita_id")
+  conexionId     String                         @map("conexion_id")
+  googleEventoId String                         @map("google_evento_id")
+  estado         EstadoSincronizacionCalendario @default(PENDIENTE)
+  ultimoError    String?                        @map("ultimo_error")
+  sincronizadoEn DateTime?                      @map("sincronizado_en") @db.Timestamptz(3)
+  creadoEn       DateTime                       @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn  DateTime                       @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  clinica  Clinica                @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  cita     Cita                   @relation(fields: [clinicaId, citaId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  conexion ConexionGoogleCalendar @relation(fields: [clinicaId, conexionId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([clinicaId, id])
+  @@unique([clinicaId, citaId, conexionId])
+  @@unique([conexionId, googleEventoId])
+  @@index([clinicaId, citaId])
+  @@map("sincronizaciones_cita_google")
 }
 
 model DienteRef {
@@ -509,11 +595,11 @@ model SuperficieDiente {
   fdi        Int
   superficie Superficie
 
-  diente DienteRef @relation(fields: [fdi], references: [fdi], onDelete: Restrict, onUpdate: Restrict)
-  diagnosticoDientes DiagnosticoDiente[]
-  eventosOdontograma EventoOdontograma[]
-  estadosSuperficie  EstadoSuperficie[]
-  planItemDientes    PlanItemDiente[]
+  diente               DienteRef             @relation(fields: [fdi], references: [fdi], onDelete: Restrict, onUpdate: Restrict)
+  diagnosticoDientes   DiagnosticoDiente[]
+  eventosOdontograma   EventoOdontograma[]
+  estadosSuperficie    EstadoSuperficie[]
+  planItemDientes      PlanItemDiente[]
   procedimientoDientes ProcedimientoDiente[]
 
   @@id([fdi, superficie])
@@ -547,23 +633,23 @@ model Procedimiento {
   creadoPorId            String              @map("creado_por_id")
   actualizadoEn          DateTime            @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  clinica     Clinica     @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  sucursal    Sucursal    @relation("ProcedimientoSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  paciente    Paciente    @relation("ProcedimientoPaciente", fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  planItem    PlanItem    @relation("ProcedimientoPlanItem", fields: [clinicaId, planItemId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  odontologo  Membresia   @relation("ProcedimientoOdontologo", fields: [clinicaId, odontologoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  tratamiento Tratamiento @relation("ProcedimientoTratamiento", fields: [clinicaId, tratamientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  creadoPor   Membresia   @relation("ProcedimientoCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  anuladoPor  Membresia?  @relation("ProcedimientoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  dientes     ProcedimientoDiente[]
-  enmiendas   EnmiendaProcedimiento[]
-  eventosOdontograma EventoOdontograma[] @relation("EventoProcedimiento")
+  clinica            Clinica                 @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sucursal           Sucursal                @relation("ProcedimientoSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  paciente           Paciente                @relation("ProcedimientoPaciente", fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  planItem           PlanItem                @relation("ProcedimientoPlanItem", fields: [clinicaId, planItemId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  odontologo         Membresia               @relation("ProcedimientoOdontologo", fields: [clinicaId, odontologoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  tratamiento        Tratamiento             @relation("ProcedimientoTratamiento", fields: [clinicaId, tratamientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  creadoPor          Membresia               @relation("ProcedimientoCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  anuladoPor         Membresia?              @relation("ProcedimientoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  dientes            ProcedimientoDiente[]
+  enmiendas          EnmiendaProcedimiento[]
+  eventosOdontograma EventoOdontograma[]     @relation("EventoProcedimiento")
   // ADR-016 (#15): el puntero al cargo que lo cobró. Mutable por columna:
   // cobrar lo reclama atómicamente; anular el cargo lo libera. Un solo slot
   // hace el doble cobro estructuralmente imposible.
-  cargoId     String?     @map("cargo_id")
-  cargo       Cargo?      @relation("ProcedimientoCobradoEn", fields: [clinicaId, cargoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  lineasCargo LineaCargo[] @relation("LineaProcedimiento")
+  cargoId            String?                 @map("cargo_id")
+  cargo              Cargo?                  @relation("ProcedimientoCobradoEn", fields: [clinicaId, cargoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  lineasCargo        LineaCargo[]            @relation("LineaProcedimiento")
 
   @@unique([clinicaId, id])
   @@index([clinicaId, pacienteId])
@@ -596,38 +682,38 @@ model ProcedimientoDiente {
 // fecha exigible no se reescriben; un monto equivocado se anula y se recrea.
 // ADR-017: un índice parcial impide más de un cargo directo vigente por PlanItem.
 model Cargo {
-  id                    String     @id @default(cuid())
-  clinicaId             String     @map("clinica_id")
-  pacienteId            String     @map("paciente_id")
-  sucursalId            String     @map("sucursal_id")
+  id                    String      @id @default(cuid())
+  clinicaId             String      @map("clinica_id")
+  pacienteId            String      @map("paciente_id")
+  sucursalId            String      @map("sucursal_id")
   descripcion           String
-  montoCentavos         Int        @map("monto_centavos")
-  montoAplicadoCentavos Int        @default(0) @map("monto_aplicado_centavos")
+  montoCentavos         Int         @map("monto_centavos")
+  montoAplicadoCentavos Int         @default(0) @map("monto_aplicado_centavos")
   estado                EstadoCargo @default(PENDIENTE)
   // date, no timestamptz: una cuota vence un día civil (ADR-013). Sin default:
   // quien crea el cargo dice cuándo vence, o el INSERT truena con 23502.
-  fechaExigibleEn       DateTime   @map("fecha_exigible_en") @db.Date
+  fechaExigibleEn       DateTime    @map("fecha_exigible_en") @db.Date
   // ADR-016 (#16): las cuotas se cuelgan del tratamiento del plan.
-  planItemId            String?    @map("plan_item_id")
-  cuotaNumero           Int?       @map("cuota_numero")
-  documentoFiscalId     String?    @map("documento_fiscal_id")
-  anuladoEn             DateTime?  @map("anulado_en") @db.Timestamptz(3)
-  anuladoPorId          String?    @map("anulado_por_id")
-  motivoAnulacion       String?    @map("motivo_anulacion")
-  creadoEn              DateTime   @default(now()) @map("creado_en") @db.Timestamptz(3)
-  creadoPorId           String     @map("creado_por_id")
-  actualizadoEn         DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+  planItemId            String?     @map("plan_item_id")
+  cuotaNumero           Int?        @map("cuota_numero")
+  documentoFiscalId     String?     @map("documento_fiscal_id")
+  anuladoEn             DateTime?   @map("anulado_en") @db.Timestamptz(3)
+  anuladoPorId          String?     @map("anulado_por_id")
+  motivoAnulacion       String?     @map("motivo_anulacion")
+  creadoEn              DateTime    @default(now()) @map("creado_en") @db.Timestamptz(3)
+  creadoPorId           String      @map("creado_por_id")
+  actualizadoEn         DateTime    @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  clinica         Clinica          @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  paciente        Paciente         @relation("CargoPaciente", fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  sucursal        Sucursal         @relation("CargoSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  planItem        PlanItem?        @relation("CargoPlanItem", fields: [clinicaId, planItemId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  documentoFiscal DocumentoFiscal? @relation(fields: [clinicaId, documentoFiscalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  creadoPor       Membresia        @relation("CargoCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  anuladoPor      Membresia?       @relation("CargoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  lineas          LineaCargo[]
-  aplicaciones    AplicacionPago[] @relation("AplicacionCargo")
-  procedimientosCobrados Procedimiento[] @relation("ProcedimientoCobradoEn")
+  clinica                Clinica          @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  paciente               Paciente         @relation("CargoPaciente", fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  sucursal               Sucursal         @relation("CargoSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  planItem               PlanItem?        @relation("CargoPlanItem", fields: [clinicaId, planItemId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  documentoFiscal        DocumentoFiscal? @relation(fields: [clinicaId, documentoFiscalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  creadoPor              Membresia        @relation("CargoCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  anuladoPor             Membresia?       @relation("CargoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  lineas                 LineaCargo[]
+  aplicaciones           AplicacionPago[] @relation("AplicacionCargo")
+  procedimientosCobrados Procedimiento[]  @relation("ProcedimientoCobradoEn")
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, planItemId, cuotaNumero])
@@ -639,14 +725,14 @@ model Cargo {
 // APPEND_ONLY: dinero descompuesto. Editarlas desalinearía Σ(líneas) contra el
 // monto del cargo (reconciliación #4). El descuento de mostrador vive acá (ADR-016).
 model LineaCargo {
-  id                     String  @id @default(cuid())
-  clinicaId              String  @map("clinica_id")
-  cargoId                String  @map("cargo_id")
-  procedimientoId        String? @map("procedimiento_id")
+  id                     String   @id @default(cuid())
+  clinicaId              String   @map("clinica_id")
+  cargoId                String   @map("cargo_id")
+  procedimientoId        String?  @map("procedimiento_id")
   descripcion            String
-  precioOriginalCentavos Int     @map("precio_original_centavos")
-  descuentoCentavos      Int     @default(0) @map("descuento_centavos")
-  montoCentavos          Int     @map("monto_centavos")
+  precioOriginalCentavos Int      @map("precio_original_centavos")
+  descuentoCentavos      Int      @default(0) @map("descuento_centavos")
+  montoCentavos          Int      @map("monto_centavos")
   creadoEn               DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
 
   clinica       Clinica        @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -720,20 +806,20 @@ model AplicacionPago {
 // >= 0 (§13.1): el stock negativo es imposible, no verificado. NO se descuenta
 // automáticamente al realizar procedimientos — decisión futura (REGLAS §8).
 model Material {
-  id                   String   @id @default(cuid())
-  clinicaId            String   @map("clinica_id")
-  sucursalId           String   @map("sucursal_id")
-  nombre               String
-  unidad               String
-  stockActual          Int      @map("stock_actual")
-  stockMinimo          Int      @map("stock_minimo")
-  costoUnitarioCentavos Int?    @map("costo_unitario_centavos")
-  activo               Boolean  @default(true)
-  creadoEn             DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
-  actualizadoEn        DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+  id                    String   @id @default(cuid())
+  clinicaId             String   @map("clinica_id")
+  sucursalId            String   @map("sucursal_id")
+  nombre                String
+  unidad                String
+  stockActual           Int      @map("stock_actual")
+  stockMinimo           Int      @map("stock_minimo")
+  costoUnitarioCentavos Int?     @map("costo_unitario_centavos")
+  activo                Boolean  @default(true)
+  creadoEn              DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn         DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  clinica     Clinica  @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  sucursal    Sucursal @relation("MaterialSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  clinica     Clinica                @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sucursal    Sucursal               @relation("MaterialSucursal", fields: [clinicaId, sucursalId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   movimientos MovimientoInventario[]
 
   @@unique([clinicaId, id])
@@ -834,28 +920,28 @@ model PlanTratamiento {
 // El motivo de una cancelación o anulación vive en la auditoría, no acá:
 // agregar columnas de motivo exigiría hacerlas mutables, y esta tabla no muta.
 model PlanItem {
-  id                    String         @id @default(cuid())
-  clinicaId             String         @map("clinica_id")
-  planId                String         @map("plan_id")
-  tratamientoId         String         @map("tratamiento_id")
-  diagnosticoId         String?        @map("diagnostico_id")
-  tratamientoCodigo     String         @map("tratamiento_codigo")
-  tratamientoNombre     String         @map("tratamiento_nombre")
-  precioUnitarioCentavos Int           @map("precio_unitario_centavos")
-  descuentoCentavos     Int            @default(0) @map("descuento_centavos")
-  estado                EstadoPlanItem @default(PROPUESTO)
-  creadoPorId           String         @map("creado_por_id")
-  creadoEn              DateTime       @default(now()) @map("creado_en") @db.Timestamptz(3)
-  actualizadoEn         DateTime       @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+  id                     String         @id @default(cuid())
+  clinicaId              String         @map("clinica_id")
+  planId                 String         @map("plan_id")
+  tratamientoId          String         @map("tratamiento_id")
+  diagnosticoId          String?        @map("diagnostico_id")
+  tratamientoCodigo      String         @map("tratamiento_codigo")
+  tratamientoNombre      String         @map("tratamiento_nombre")
+  precioUnitarioCentavos Int            @map("precio_unitario_centavos")
+  descuentoCentavos      Int            @default(0) @map("descuento_centavos")
+  estado                 EstadoPlanItem @default(PROPUESTO)
+  creadoPorId            String         @map("creado_por_id")
+  creadoEn               DateTime       @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn          DateTime       @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  clinica     Clinica         @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  plan        PlanTratamiento @relation(fields: [clinicaId, planId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  tratamiento Tratamiento     @relation(fields: [clinicaId, tratamientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  diagnostico Diagnostico?    @relation(fields: [clinicaId, diagnosticoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  creadoPor   Membresia       @relation("PlanItemCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  dientes     PlanItemDiente[]
-  procedimientos Procedimiento[] @relation("ProcedimientoPlanItem")
-  cargos      Cargo[]          @relation("CargoPlanItem")
+  clinica        Clinica          @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  plan           PlanTratamiento  @relation(fields: [clinicaId, planId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  tratamiento    Tratamiento      @relation(fields: [clinicaId, tratamientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  diagnostico    Diagnostico?     @relation(fields: [clinicaId, diagnosticoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  creadoPor      Membresia        @relation("PlanItemCreadoPor", fields: [clinicaId, creadoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  dientes        PlanItemDiente[]
+  procedimientos Procedimiento[]  @relation("ProcedimientoPlanItem")
+  cargos         Cargo[]          @relation("CargoPlanItem")
 
   @@unique([clinicaId, id])
   @@index([clinicaId, planId])
@@ -901,14 +987,14 @@ model EventoOdontograma {
   anulaEventoId   String?               @map("anula_evento_id")
   motivoAnulacion String?               @map("motivo_anulacion")
 
-  clinica       Clinica            @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  paciente      Paciente           @relation(fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  cara          SuperficieDiente   @relation(fields: [fdi, superficie], references: [fdi, superficie], onDelete: Restrict, onUpdate: Restrict)
-  registradoPor Membresia          @relation("EventoOdontogramaRegistradoPor", fields: [clinicaId, registradoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  diagnostico   Diagnostico?       @relation(fields: [clinicaId, diagnosticoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  procedimiento Procedimiento?     @relation("EventoProcedimiento", fields: [clinicaId, procedimientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  anulaEvento   EventoOdontograma? @relation("EventoAnulacion", fields: [clinicaId, anulaEventoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  anuladoPorEvento EventoOdontograma? @relation("EventoAnulacion")
+  clinica            Clinica            @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  paciente           Paciente           @relation(fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  cara               SuperficieDiente   @relation(fields: [fdi, superficie], references: [fdi, superficie], onDelete: Restrict, onUpdate: Restrict)
+  registradoPor      Membresia          @relation("EventoOdontogramaRegistradoPor", fields: [clinicaId, registradoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  diagnostico        Diagnostico?       @relation(fields: [clinicaId, diagnosticoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  procedimiento      Procedimiento?     @relation("EventoProcedimiento", fields: [clinicaId, procedimientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  anulaEvento        EventoOdontograma? @relation("EventoAnulacion", fields: [clinicaId, anulaEventoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  anuladoPorEvento   EventoOdontograma? @relation("EventoAnulacion")
   estadosProyectados EstadoSuperficie[] @relation("EstadoUltimoEvento")
 
   @@unique([clinicaId, id])
@@ -961,13 +1047,13 @@ model Diagnostico {
   creadoEn        DateTime           @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn   DateTime           @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  clinica       Clinica    @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  expediente    Expediente @relation(fields: [clinicaId, expedienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  registradoPor Membresia  @relation("DiagnosticoRegistradoPor", fields: [clinicaId, registradoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  anuladoPor    Membresia? @relation("DiagnosticoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  dientes       DiagnosticoDiente[]
+  clinica            Clinica             @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  expediente         Expediente          @relation(fields: [clinicaId, expedienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  registradoPor      Membresia           @relation("DiagnosticoRegistradoPor", fields: [clinicaId, registradoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  anuladoPor         Membresia?          @relation("DiagnosticoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  dientes            DiagnosticoDiente[]
   eventosOdontograma EventoOdontograma[]
-  planItems     PlanItem[]
+  planItems          PlanItem[]
 
   @@unique([clinicaId, id])
   @@index([clinicaId, expedienteId])

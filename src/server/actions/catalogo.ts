@@ -3,17 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { centavosDesdeTexto } from "@/lib/money";
 import {
+  AgregarReferenciaCatalogoSchema,
   ActualizarTratamientoSchema,
   CrearTratamientoSchema,
+  PreferenciaTratamientoSchema,
 } from "@/lib/validation/catalogo";
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso } from "@/server/auth/permissions";
 import {
   actualizarTratamiento,
-  clonarCatalogo,
+  agregarReferenciaCatalogo,
   crearTratamiento,
+  guardarPreferenciaTratamiento,
 } from "@/server/db/catalogo";
 
 function texto(formData: FormData, nombre: string): string {
@@ -24,15 +26,11 @@ function bandera(formData: FormData, nombre: string): boolean {
   return formData.get(nombre) === "on";
 }
 
-/** El precio se captura como texto ("45.50") y money.ts lo convierte a centavos. */
-function precioCentavos(formData: FormData, nombre: string): number | null {
-  return centavosDesdeTexto(texto(formData, nombre));
-}
-
-export async function clonarCatalogoInicial(): Promise<void> {
+export async function agregarReferenciaDesdeFormulario(formData: FormData): Promise<void> {
   const ctx = await requireCtx();
   requirePermiso(ctx, "catalogo:write");
-  await clonarCatalogo(ctx);
+  const datos = AgregarReferenciaCatalogoSchema.parse({ codigo: texto(formData, "codigo") });
+  await agregarReferenciaCatalogo(ctx, datos.codigo);
   revalidatePath("/catalogo");
 }
 
@@ -40,10 +38,9 @@ export async function crearTratamientoDesdeFormulario(formData: FormData): Promi
   const ctx = await requireCtx();
   requirePermiso(ctx, "catalogo:write");
   const datos = CrearTratamientoSchema.parse({
-    categoriaId: texto(formData, "categoriaId"),
+    categoriaNombre: texto(formData, "categoriaNombre"),
     codigo: texto(formData, "codigo"),
     nombre: texto(formData, "nombre"),
-    precioListaCentavos: precioCentavos(formData, "precio"),
     alcance: texto(formData, "alcance"),
     requiereDiente: bandera(formData, "requiereDiente"),
     permiteMultiplesDientes: bandera(formData, "permiteMultiplesDientes"),
@@ -65,13 +62,28 @@ export async function actualizarTratamientoDesdeFormulario(
   requirePermiso(ctx, "catalogo:write");
   const datos = ActualizarTratamientoSchema.parse({
     nombre: texto(formData, "nombre"),
-    precioListaCentavos: precioCentavos(formData, "precio"),
     activo: bandera(formData, "activo"),
   });
   const tratamiento = await actualizarTratamiento(ctx, tratamientoId, datos);
   if (!tratamiento) {
     throw new Error("El tratamiento no existe.");
   }
+  revalidatePath("/catalogo");
+  redirect("/catalogo");
+}
+
+export async function guardarPreferenciaDesdeFormulario(
+  tratamientoId: string,
+  formData: FormData,
+): Promise<never> {
+  const ctx = await requireCtx();
+  requirePermiso(ctx, "catalogo:read");
+  const datos = PreferenciaTratamientoSchema.parse({
+    alias: texto(formData, "alias"),
+    favorito: bandera(formData, "favorito"),
+  });
+  const tratamiento = await guardarPreferenciaTratamiento(ctx, tratamientoId, datos);
+  if (!tratamiento) throw new Error("El tratamiento no existe.");
   revalidatePath("/catalogo");
   redirect("/catalogo");
 }

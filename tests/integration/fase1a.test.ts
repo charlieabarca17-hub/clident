@@ -301,6 +301,7 @@ describe("estructura de seguridad", () => {
       "categorias_tratamiento",
       "citas",
       "clinicas",
+      "conexiones_google_calendar",
       "desactivaciones_alertas_medicas",
       "diagnostico_dientes",
       "diagnosticos",
@@ -321,8 +322,10 @@ describe("estructura de seguridad", () => {
       "planes",
       "plantillas_categoria",
       "plantillas_tratamiento",
+      "preferencias_tratamiento",
       "procedimiento_dientes",
       "procedimientos",
+      "sincronizaciones_cita_google",
       "sucursales",
       "superficies_diente",
       "tratamientos",
@@ -340,10 +343,10 @@ describe("estructura de seguridad", () => {
     const resultado = await migrator.query(
       `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-       WHERE n.nspname = 'public' AND c.relname IN ('alertas_medicas','clinicas','citas','desactivaciones_alertas_medicas','expedientes','sucursales','membresias','auditoria','pacientes','categorias_tratamiento','tratamientos','diagnosticos','diagnostico_dientes','eventos_odontograma','estados_superficie','planes','plan_items','plan_item_dientes','procedimientos','procedimiento_dientes','enmiendas_procedimiento','cargos','lineas_cargo','pagos','aplicaciones_pago','documentos_fiscales','materiales','movimientos_inventario')
+       WHERE n.nspname = 'public' AND c.relname IN ('alertas_medicas','clinicas','citas','conexiones_google_calendar','desactivaciones_alertas_medicas','expedientes','sucursales','membresias','auditoria','pacientes','categorias_tratamiento','tratamientos','preferencias_tratamiento','diagnosticos','diagnostico_dientes','eventos_odontograma','estados_superficie','planes','plan_items','plan_item_dientes','procedimientos','procedimiento_dientes','enmiendas_procedimiento','cargos','lineas_cargo','pagos','aplicaciones_pago','documentos_fiscales','materiales','movimientos_inventario','sincronizaciones_cita_google')
        ORDER BY c.relname`,
     );
-    expect(resultado.rows).toHaveLength(28);
+    expect(resultado.rows).toHaveLength(31);
     expect(resultado.rows.every((fila) => fila.relrowsecurity && fila.relforcerowsecurity)).toBe(true);
   });
 
@@ -360,11 +363,11 @@ describe("estructura de seguridad", () => {
       `SELECT table_name, column_name, data_type, datetime_precision
        FROM information_schema.columns
        WHERE table_schema = 'public'
-         AND table_name IN ('alertas_medicas', 'clinicas', 'citas', 'desactivaciones_alertas_medicas', 'expedientes', 'sucursales', 'usuarios', 'membresias', 'auditoria', 'pacientes', 'categorias_tratamiento', 'tratamientos', 'diagnosticos', 'eventos_odontograma', 'estados_superficie', 'planes', 'plan_items', 'procedimientos', 'enmiendas_procedimiento', 'cargos', 'lineas_cargo', 'pagos', 'aplicaciones_pago', 'documentos_fiscales', 'materiales', 'movimientos_inventario')
+         AND table_name IN ('alertas_medicas', 'clinicas', 'citas', 'conexiones_google_calendar', 'desactivaciones_alertas_medicas', 'expedientes', 'sucursales', 'usuarios', 'membresias', 'auditoria', 'pacientes', 'categorias_tratamiento', 'tratamientos', 'preferencias_tratamiento', 'diagnosticos', 'eventos_odontograma', 'estados_superficie', 'planes', 'plan_items', 'procedimientos', 'enmiendas_procedimiento', 'cargos', 'lineas_cargo', 'pagos', 'aplicaciones_pago', 'documentos_fiscales', 'materiales', 'movimientos_inventario', 'sincronizaciones_cita_google')
          AND data_type LIKE 'timestamp%'
        ORDER BY table_name, column_name`,
     );
-    expect(resultado.rows).toHaveLength(58);
+    expect(resultado.rows).toHaveLength(65);
     expect(resultado.rows.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(true);
     expect(resultado.rows.every(({ datetime_precision }) => datetime_precision === 3)).toBe(true);
   });
@@ -426,6 +429,9 @@ describe("estructura de seguridad", () => {
       plantillas_tratamiento: ["SELECT"],
       categorias_tratamiento: ["SELECT", "INSERT", "UPDATE"],
       tratamientos: ["SELECT", "INSERT", "UPDATE"],
+      preferencias_tratamiento: ["SELECT", "INSERT", "UPDATE"],
+      conexiones_google_calendar: ["SELECT", "INSERT", "UPDATE"],
+      sincronizaciones_cita_google: ["SELECT", "INSERT", "UPDATE"],
       diagnosticos: ["SELECT", "INSERT", "UPDATE"],
       diagnostico_dientes: ["SELECT", "INSERT", "DELETE"],
       eventos_odontograma: ["SELECT", "INSERT"],
@@ -535,10 +541,10 @@ describe("estructura de seguridad", () => {
     }
   });
 
-  it("clident_readonly tiene SELECT y ningún otro privilegio en toda tabla", async () => {
+  it("clident_readonly tiene SELECT y ningún otro privilegio en tablas reportables", async () => {
     const tablas = [
       "alertas_medicas", "aplicaciones_pago", "auditoria", "cargos", "categorias_tratamiento", "clinicas", "citas", "desactivaciones_alertas_medicas", "diagnostico_dientes", "diagnosticos", "dientes_ref", "documentos_fiscales", "estados_superficie", "eventos_odontograma", "expedientes",
-      "lineas_cargo", "materiales", "membresias", "movimientos_inventario", "pacientes", "pagos", "plan_item_dientes", "plan_items", "planes", "plantillas_categoria", "plantillas_tratamiento", "procedimiento_dientes", "procedimientos", "enmiendas_procedimiento", "sucursales", "superficies_diente", "tratamientos", "usuarios",
+      "lineas_cargo", "materiales", "membresias", "movimientos_inventario", "pacientes", "pagos", "plan_item_dientes", "plan_items", "planes", "plantillas_categoria", "plantillas_tratamiento", "preferencias_tratamiento", "procedimiento_dientes", "procedimientos", "enmiendas_procedimiento", "sincronizaciones_cita_google", "sucursales", "superficies_diente", "tratamientos", "usuarios",
     ];
     const verbos = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"];
     for (const tabla of tablas) {
@@ -552,6 +558,16 @@ describe("estructura de seguridad", () => {
     }
   });
 
+  it("clident_readonly no puede leer tokens de Google Calendar", async () => {
+    for (const verbo of ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"]) {
+      const resultado = await migrator.query(
+        "SELECT has_table_privilege('clident_readonly', 'conexiones_google_calendar', $1::text) AS permitido",
+        [verbo],
+      );
+      expect(resultado.rows[0].permitido, verbo).toBe(false);
+    }
+  });
+
   it("cada tabla con RLS declara política de aplicación y de migración", async () => {
     const resultado = await migrator.query(
       `SELECT tablename,
@@ -562,7 +578,7 @@ describe("estructura de seguridad", () => {
        GROUP BY tablename ORDER BY tablename`,
     );
     expect(resultado.rows.map(({ tablename }) => tablename)).toEqual([
-      "alertas_medicas", "aplicaciones_pago", "auditoria", "cargos", "categorias_tratamiento", "citas", "clinicas", "desactivaciones_alertas_medicas", "diagnostico_dientes", "diagnosticos", "documentos_fiscales", "enmiendas_procedimiento", "estados_superficie", "eventos_odontograma", "expedientes", "lineas_cargo", "materiales", "membresias", "movimientos_inventario", "pacientes", "pagos", "plan_item_dientes", "plan_items", "planes", "procedimiento_dientes", "procedimientos", "sucursales", "tratamientos",
+      "alertas_medicas", "aplicaciones_pago", "auditoria", "cargos", "categorias_tratamiento", "citas", "clinicas", "conexiones_google_calendar", "desactivaciones_alertas_medicas", "diagnostico_dientes", "diagnosticos", "documentos_fiscales", "enmiendas_procedimiento", "estados_superficie", "eventos_odontograma", "expedientes", "lineas_cargo", "materiales", "membresias", "movimientos_inventario", "pacientes", "pagos", "plan_item_dientes", "plan_items", "planes", "preferencias_tratamiento", "procedimiento_dientes", "procedimientos", "sincronizaciones_cita_google", "sucursales", "tratamientos",
     ]);
     for (const fila of resultado.rows) {
       expect(fila.tiene_migracion, `${fila.tablename}.migración`).toBe(true);

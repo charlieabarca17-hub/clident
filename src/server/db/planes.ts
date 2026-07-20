@@ -118,7 +118,6 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
         id: true,
         codigo: true,
         nombre: true,
-        precioListaCentavos: true,
         alcance: true,
         requiereDiente: true,
         permiteMultiplesDientes: true,
@@ -165,8 +164,8 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
         planId: plan.id,
         tratamientoId: tratamiento.id,
         diagnosticoId: input.diagnosticoId,
-        // El catálogo sugiere; el odontólogo decide el precio de este paciente.
-        // Éste es el snapshot que luego se cobra una sola vez (ADR-017).
+        // El odontólogo decide el precio de este paciente. Éste es el snapshot
+        // que luego se cobra una sola vez (ADR-017).
         tratamientoCodigo: tratamiento.codigo,
         tratamientoNombre: tratamiento.nombre,
         precioUnitarioCentavos: input.precioAcordadoCentavos,
@@ -189,7 +188,6 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
     }
     await registrarAuditoria(tx, ctx, "PLAN_ITEM_AGREGADO", plan.id, {
       itemId: item.id,
-      precioSugeridoCentavos: tratamiento.precioListaCentavos,
       precioAcordadoCentavos: input.precioAcordadoCentavos,
       descuentoCentavos: input.descuentoCentavos,
     });

@@ -1,13 +1,7 @@
 import { z } from "zod";
 
-import { MAX_CENTAVOS } from "@/lib/money";
-
 const nombreTratamiento = z.string().trim().min(1, "El nombre es obligatorio.").max(120);
-const precioCentavos = z
-  .number({ message: "El precio no es un monto válido. Escribilo como 45 o 45.50." })
-  .int("El precio debe llegar en centavos enteros (ADR-009).")
-  .min(0, "El precio no puede ser negativo.")
-  .max(MAX_CENTAVOS, "El precio excede el máximo del sistema.");
+const nombreCategoria = z.string().trim().min(1, "La categoría es obligatoria.").max(80);
 
 /**
  * Espejo del CHECK `tratamientos_banderas_coherentes`: la base tiene la última
@@ -51,7 +45,7 @@ function banderasCoherentes(
 
 export const CrearTratamientoSchema = z
   .object({
-    categoriaId: z.string().trim().min(1, "Elegí una categoría."),
+    categoriaNombre: nombreCategoria,
     codigo: z
       .string()
       .trim()
@@ -59,7 +53,6 @@ export const CrearTratamientoSchema = z
       .max(20, "El código no puede pasar de 20 caracteres.")
       .transform((valor) => valor.toUpperCase()),
     nombre: nombreTratamiento,
-    precioListaCentavos: precioCentavos,
     alcance: z.enum(["DIENTE", "BOCA"]),
     requiereDiente: z.boolean(),
     permiteMultiplesDientes: z.boolean(),
@@ -77,8 +70,18 @@ export type CrearTratamientoInput = z.infer<typeof CrearTratamientoSchema>;
 // desactivar el anterior (mismo criterio que "desactivar, nunca borrar", §4.2).
 export const ActualizarTratamientoSchema = z.object({
   nombre: nombreTratamiento,
-  precioListaCentavos: precioCentavos,
   activo: z.boolean(),
 });
 
 export type ActualizarTratamientoInput = z.infer<typeof ActualizarTratamientoSchema>;
+
+export const AgregarReferenciaCatalogoSchema = z.object({
+  codigo: z.string().trim().min(1).max(20),
+});
+
+export const PreferenciaTratamientoSchema = z.object({
+  alias: z.string().trim().max(120).transform((valor) => valor || null),
+  favorito: z.boolean(),
+});
+
+export type PreferenciaTratamientoInput = z.infer<typeof PreferenciaTratamientoSchema>;
