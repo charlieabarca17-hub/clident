@@ -2,22 +2,20 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Arcada, arcada } from "@/components/odontograma/arcada";
-import { DIENTES, SUPERFICIES } from "@/lib/dientes";
 import {
   colorCondicion,
   CONDICIONES_DENTALES,
   etiquetaCondicion,
   textoSobreCondicion,
 } from "@/lib/odontograma";
-import {
-  anularEventoOdontogramaDesdeFormulario,
-  registrarCondicionDesdeFormulario,
-} from "@/server/actions/odontograma";
+import { anularEventoOdontogramaDesdeFormulario } from "@/server/actions/odontograma";
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso, tienePermiso } from "@/server/auth/permissions";
 import { listarDiagnosticos } from "@/server/db/diagnosticos";
 import { getOdontograma } from "@/server/db/odontograma";
 import { getPacienteAdministrativo } from "@/server/db/pacientes";
+
+import { FormularioCondicion } from "./formulario-condicion";
 
 type OdontogramaPageProps = {
   params: Promise<{ id: string }>;
@@ -121,50 +119,7 @@ export default async function OdontogramaPage({ params, searchParams }: Odontogr
         {puedeEscribir ? (
           <section className="rounded-2xl border bg-card p-5 shadow-sm">
             <h2 className="text-lg font-semibold">Registrar condición</h2>
-            <form action={registrarCondicionDesdeFormulario} className="mt-4 grid gap-4 sm:grid-cols-2">
-              <input type="hidden" name="pacienteId" value={paciente.id} />
-              <label className="block text-sm font-medium">Pieza *
-                <select name="fdi" required className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
-                  <option value="">— Elegí la pieza —</option>
-                  {DIENTES.map((diente) => (
-                    <option key={diente.fdi} value={diente.fdi}>
-                      {diente.fdi} · {diente.nombre}{diente.denticion === "TEMPORAL" ? " (temporal)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm font-medium">Cara *
-                <select name="superficie" required defaultValue="COMPLETO" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
-                  {SUPERFICIES.map((superficie) => (
-                    <option key={superficie} value={superficie}>
-                      {superficie === "COMPLETO" ? "Pieza completa" : superficie.charAt(0) + superficie.slice(1).toLowerCase()}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm font-medium">Condición *
-                <select name="condicion" required className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
-                  {CONDICIONES_DENTALES.map((entrada) => (
-                    <option key={entrada.condicion} value={entrada.condicion}>{entrada.etiqueta}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm font-medium">Fecha del hallazgo
-                <input name="ocurridoEn" type="datetime-local" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
-                <span className="mt-1 block text-xs font-normal text-muted-foreground">Vacío = ahora. Permite registrar hallazgos retroactivos sin alterar los más recientes.</span>
-              </label>
-              <label className="block text-sm font-medium sm:col-span-2">Diagnóstico vinculado
-                <select name="diagnosticoId" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
-                  <option value="">— Ninguno —</option>
-                  {diagnosticosVigentes.map((dx) => (
-                    <option key={dx.id} value={dx.id}>{dx.descripcion}</option>
-                  ))}
-                </select>
-              </label>
-              <div className="flex justify-end sm:col-span-2">
-                <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Registrar</button>
-              </div>
-            </form>
+            <FormularioCondicion pacienteId={paciente.id} diagnosticos={diagnosticosVigentes} />
           </section>
         ) : null}
 

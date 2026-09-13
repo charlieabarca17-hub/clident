@@ -12,6 +12,14 @@ import {
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso } from "@/server/auth/permissions";
 import {
+  type EstadoFormulario,
+  errorAlGuardar,
+  MENSAJE_NO_DISPONIBLE,
+  errorDeFormulario,
+  mensajesDeError,
+  valoresDelFormulario,
+} from "@/lib/formulario";
+import {
   anularProcedimiento,
   editarNotaClinica,
   enmendarNotaClinica,
@@ -38,10 +46,29 @@ function ruta(pacienteId: string): string {
   return `/pacientes/${pacienteId}/procedimientos`;
 }
 
-export async function realizarProcedimientoDesdeFormulario(formData: FormData): Promise<never> {
+/**
+ * Los campos que se le devuelven a la pantalla si hay que corregir algo. Incluye
+ * las filas de piezas para que el profesional no tenga que volver a elegirlas, y
+ * sobre todo `notasClinicas`: es lo más caro de volver a escribir.
+ */
+const CAMPOS_PROCEDIMIENTO = [
+  "planItemId",
+  "realizadoEn",
+  "notasClinicas",
+  "condicionResultante",
+  ...Array.from({ length: MAX_FILAS_DIENTES }, (_, fila) => `diente-${fila}`),
+  ...Array.from({ length: MAX_FILAS_DIENTES }, (_, fila) => `superficie-${fila}`),
+] as const;
+
+export async function realizarProcedimientoDesdeFormulario(
+  _estadoPrevio: EstadoFormulario,
+  formData: FormData,
+): Promise<EstadoFormulario> {
   const ctx = await requireCtx();
   requirePermiso(ctx, "clinico:write");
-  const datos = RealizarProcedimientoSchema.parse({
+
+  const escrito = valoresDelFormulario(formData, CAMPOS_PROCEDIMIENTO);
+  const analisis = RealizarProcedimientoSchema.safeParse({
     pacienteId: texto(formData, "pacienteId"),
     planItemId: texto(formData, "planItemId"),
     realizadoEn: texto(formData, "realizadoEn"),
@@ -49,13 +76,29 @@ export async function realizarProcedimientoDesdeFormulario(formData: FormData): 
     condicionResultante: texto(formData, "condicionResultante") || null,
     dientes: dientesDelFormulario(formData),
   });
-  const procedimiento = await realizarProcedimiento(ctx, datos);
+  if (!analisis.success) {
+    return errorDeFormulario(mensajesDeError(analisis.error), escrito);
+  }
+
+  const datos = analisis.data;
+  let procedimiento: Awaited<ReturnType<typeof realizarProcedimiento>>;
+  try {
+    // La transacción hace la escritura atómica. NO garantiza que reintentar no
+    // duplique: si el COMMIT ocurrió y la respuesta se perdió, el procedimiento
+    // quedó registrado y acá igual se ve un error. Por eso el mensaje de resultado
+    // incierto manda revisar la historia antes de volver a intentar.
+    procedimiento = await realizarProcedimiento(ctx, datos);
+  } catch (error) {
+    // Una regla clínica se muestra tal cual; lo demás, sin detalles y sin invitar
+    // a reintentar a ciegas. La nota clínica no va a ningún log.
+    return errorAlGuardar(error, escrito);
+  }
+  if (!procedimiento) return errorDeFormulario([MENSAJE_NO_DISPONIBLE], escrito);
+
   revalidatePath(ruta(datos.pacienteId));
-  redirect(
-    procedimiento
-      ? ruta(datos.pacienteId)
-      : `${ruta(datos.pacienteId)}?estado=no-disponible`,
-  );
+  // Fuera del try: `redirect` lanza una señal interna de Next que un catch
+  // tragaría, dejando al profesional sin saber si se guardó.
+  redirect(ruta(datos.pacienteId));
 }
 
 export async function editarNotaDesdeFormulario(formData: FormData): Promise<never> {
