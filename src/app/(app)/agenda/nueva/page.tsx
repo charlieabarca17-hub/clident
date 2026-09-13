@@ -4,6 +4,7 @@ import { crearCitaDesdeFormulario } from "@/server/actions/citas";
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso } from "@/server/auth/permissions";
 import { FechaCivilSchema, fechaHoyElSalvador } from "@/lib/validation/citas";
+import { prepararSeleccionPaciente } from "@/lib/agenda";
 import { listarOdontologosAgenda } from "@/server/db/citas";
 import { getPacienteParaAgenda, listarPacientes } from "@/server/db/pacientes";
 
@@ -21,7 +22,10 @@ export default async function NuevaCitaPage({ searchParams }: { searchParams: Nu
     listarOdontologosAgenda(ctx),
     parametros.pacienteId ? getPacienteParaAgenda(ctx, parametros.pacienteId) : null,
   ]);
-  const pacienteId = preseleccion?.id ?? "";
+  // Las opciones y el valor seleccionado salen juntos y coherentes: el `<select>`
+  // nunca recibe un valor que no exista entre sus opciones (`src/lib/agenda.ts`).
+  const { opciones: opcionesPaciente, valorSeleccionado: pacienteSeleccionadoId } =
+    prepararSeleccionPaciente(pacientes, preseleccion);
 
   return (
     <main className="min-h-full bg-background p-5 sm:p-8">
@@ -47,9 +51,9 @@ export default async function NuevaCitaPage({ searchParams }: { searchParams: Nu
           ) : null}
           <div>
             <label htmlFor="pacienteId" className="block text-sm font-medium">Paciente</label>
-            <select id="pacienteId" name="pacienteId" required defaultValue={pacienteId} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm">
+            <select id="pacienteId" name="pacienteId" required defaultValue={pacienteSeleccionadoId} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm">
               <option value="" disabled>Buscar o elegir paciente…</option>
-              {pacientes.map((paciente) => (
+              {opcionesPaciente.map((paciente) => (
                 <option key={paciente.id} value={paciente.id}>
                   {paciente.apellidos}, {paciente.nombres} · {paciente.telefono}
                 </option>
@@ -99,7 +103,7 @@ export default async function NuevaCitaPage({ searchParams }: { searchParams: Nu
 
           <div className="flex justify-end gap-3 border-t pt-5">
             <Link href={`/agenda?fecha=${fecha}`} className="rounded-lg border px-4 py-2 text-sm font-medium">Cancelar</Link>
-            <button disabled={odontologos.length === 0 || pacientes.length === 0} className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground">
+            <button disabled={odontologos.length === 0 || opcionesPaciente.length === 0} className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground">
               Guardar cita
             </button>
           </div>
