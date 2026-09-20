@@ -107,7 +107,7 @@ Además, **la base de datos obliga al orden correcto**: un cargo con dinero apli
 
 **Cómo se garantiza:** el cálculo del saldo a favor excluye los pagos anulados. Y **la base de datos no deja anular un pago cuyo dinero todavía esté aplicado a algún cargo**: primero hay que revertir las aplicaciones (§1.5), y recién entonces se puede anular. Ese orden sí lo obliga la base, no la memoria de quien lo haga.
 
-> **Lo que todavía NO está cerrado, y te lo debo decir:** hoy **nada impide deshacer una anulación**. Si alguien vuelve a poner un pago anulado como si estuviera vigente, **el crédito del cheque que rebotó revive** y se puede aplicar a deudas reales — justo lo que esta regla existe para impedir. La base no lo puede atajar sola: solo compara la fila consigo misma, no con lo que decía antes. **Es la decisión pendiente #12, y es de dinero.**
+> **Límite aceptado en ADR-016:** la base no puede impedir por sí sola que una actualización directa vuelva vigente un pago anulado, porque un `CHECK` no compara la fila anterior. La aplicación no ofrece esa acción y la reconciliación compara las anulaciones registradas en la auditoría —que no se puede editar— contra los pagos y cargos vigentes. Si alguien resucita uno por SQL, el control lo detecta **cuando se corre**: hoy ese control vive en el chequeo manual (`npm run reconciliar`) y todavía no corre solo en cada cambio. Es una garantía por **detección**, no por imposibilidad, y la detección depende de que alguien pase el chequeo.
 
 **Igual que todo lo demás: no se borra.** El pago anulado sigue visible, con su motivo y su responsable.
 
@@ -628,7 +628,7 @@ Ninguna bloquea el arranque. **La lista se revisó en la auditoría del Ciclo 1*
 | # | Pregunta | Cuándo | Si se decide tarde |
 |---|---|---|---|
 | 1 | Si un paciente **no asiste**, ¿se libera el horario para alguien más? Hoy solo lo libera la cancelación. | Agenda | Barato |
-| 3 | **La forma del cobro:** IVA 13% (¿incluido o agregado?), **descuento de mostrador**, y en qué orden se aplican. Ver nota abajo. | Antes de Caja | **Caro: migrar datos financieros** |
+| 3 | **RESUELTO en Fase 9:** descuento por línea; el cargo es la suma de sus líneas; sin IVA hasta integrar DTE. | Caja | Resuelto — ADR-016 |
 | 4 | La ventana de **12 horas** para editar una nota clínica es arbitraria. ¿Cuál corresponde según las expectativas salvadoreñas de expediente clínico? | Procedimientos | Barato |
 | 5 | ¿El odontólogo ve **todos** los pacientes o solo los suyos? Hoy: todos. | Pacientes | Barato |
 | 6 | ¿Se van a guardar **radiografías o imágenes** en el expediente? **Serían el primer dato de un paciente que vive fuera de la base de datos** — ver nota abajo. | Pacientes | **Decisión grande, con su propio análisis de seguridad** |
@@ -637,20 +637,18 @@ Ninguna bloquea el arranque. **La lista se revisó en la auditoría del Ciclo 1*
 | 9 | **¿Cómo se le devuelve el efectivo a un paciente?** El sistema sabe reconocerle saldo a favor (§1.5), pero no sacar plata de la caja. | Antes de Caja | **Caro: migrar datos financieros** |
 | 10 | **RESUELTO en Ciclo 15:** el odontólogo fija un precio total por paciente; la primera sesión conserva ese total, las demás van incluidas y Caja cobra una sola vez por tratamiento. | Tratamientos | Resuelto — ADR-017 |
 | 11 | **¿Número de expediente correlativo?** Un menor sin DUI no tiene con qué buscarse (§5.5). | Pacientes | Columna nueva |
-| 12 | **¿Un pago anulado se puede des-anular?** Hoy **sí**, y eso **revive el crédito de un cheque que rebotó** (§1.6). La base no lo puede atajar sola. | Antes de Caja | **Caro: cambia cómo se anula todo** |
+| 12 | **RESUELTO en Fase 9:** la aplicación no permite des-anular y la reconciliación detecta cualquier resurrección contra la auditoría append-only. | Caja | Resuelto con riesgo residual aceptado — ADR-016 |
 | 13 | **¿Un procedimiento se puede reasignar a otro plan?** Hoy no: si te olvidaste de enlazarlo, hay que anularlo y rehacerlo. ¿Esa rigidez estorba en la práctica? | Procedimientos | Barato |
-| 15 | **Un cargo mal cobrado no se puede recrear.** Anularlo y volverlo a hacer —que es lo que manda el sistema para corregir un monto— **falla**. La única salida sería anular el procedimiento, o sea ensuciar el expediente clínico por un error de tipeo en Caja. | Antes de Caja | **Sin arreglo barato** |
+| 15 | **RESUELTO en Fase 9:** al anular un cargo se libera el procedimiento para cobrarlo de nuevo; las líneas anuladas permanecen como historial. | Caja | Resuelto — ADR-016 |
 | 18 | **RESUELTO en Ciclo 15:** el cargo directo y las cuotas se cuelgan del mismo tratamiento del plan; si existe uno, el otro se rechaza. Las activaciones no crean cobros separados. | Caja | Resuelto — ADR-017 |
 
 **Resueltas en el Ciclo 1:** la **ortodoncia por cuotas** — con fechas de vencimiento, los cuatro saldos de §1.8 y la separación de §1.9, sin romper la regla de que la cuenta por cobrar se registra solo en Caja. Y los **pacientes menores de edad** — con el responsable de §5.5; solo queda el identificador (#11).
 
 ## Las que hay que entender antes de responder
 
-### #3 — El IVA no es lo único que define cómo se ve un cobro
+### #3 — Forma del cobro — **resuelta en Fase 9 (ADR-016)**
 
-Un plan puede llevar descuento; **un cobro no tiene dónde guardarlo.** El descuento de mostrador —"te lo dejo en $80 de una vez"— es el caso más común de una clínica salvadoreña y hoy no tiene lugar en el sistema. Y con IVA hay que decidir además si el descuento va antes o después del impuesto, y si el impuesto se calcula sobre el total o línea por línea (dan resultados distintos por centavos, y esos centavos son los que después no cuadran en el corte de caja).
-
-**Es una sola decisión.** Contestarla en pedazos significa pagar la migración dos o tres veces.
+Cada línea conserva el precio original, el descuento de mostrador y el monto final; la base exige que el monto sea `precio − descuento`. El cargo es la suma exacta de sus líneas, incluidas las cuotas. El IVA no se inventa antes de integrar el DTE y podrá agregarse después sin reescribir lo ya cobrado.
 
 ### #10 — Cuánto vale cada sesión — **resuelto en el Ciclo 15 (ADR-017)**
 
@@ -670,6 +668,6 @@ Y algo práctico: la clínica te lo va a pedir en el mes 2, no en el año 2.
 
 ---
 
-**Las más caras que siguen abiertas son la 3, la 9, la 12 y la 15:** su costo de decidirse tarde es migrar datos financieros con historia que ya no cuadra. Las #10 y #18 quedaron resueltas por ADR-017.
+**Las decisiones financieras grandes que siguen abiertas son la #2 (corte de caja) y la #9 (devolución de efectivo).** La #6 (imágenes) requiere un ADR propio de seguridad. Las #3, #12 y #15 quedaron resueltas por ADR-016; las #10 y #18, por ADR-017.
 
 La protección de #18 ahora está en el flujo y en la base: un tratamiento no puede tener simultáneamente cobro único y cuotas vigentes.

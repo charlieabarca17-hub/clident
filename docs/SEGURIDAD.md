@@ -1,6 +1,8 @@
 # Revisión de seguridad — Fase 12
 
 Última revisión: 2026-07-18 (cierre del roadmap inicial).
+Revisado el 2026-09-18 (Ciclo 20, saneamiento documental): se actualizó el §5 contra
+lo que las migraciones y la suite de integración demuestran hoy.
 
 Este documento no repite la arquitectura de aislamiento (eso vive en
 `ARQUITECTURA.md` §4). Registra la **revisión de cierre**: qué se auditó, qué
@@ -88,20 +90,25 @@ comparten IP, y bloquear por IP dejaría fuera a la recepción entera.
 
 ## 5. Límites conocidos que NO se resolvieron
 
-Están documentados, no olvidados. Ninguno es barato de arreglar y los cuatro
-exigen decisión del propietario:
+Están documentados, no olvidados. **Tres siguen abiertos** y exigen decisión del
+propietario; el cuarto se resolvió y se deja registrado para no volver a abrirlo:
 
 1. **Des-anular es posible a nivel de privilegios** (`procedimientos`, `cargos`,
    `pagos`). Un `CHECK` no ve el valor anterior y el proyecto no usa triggers.
    Mitigación implementada: la consulta de reconciliación #5 lo **detecta**
-   contra la auditoría append-only (ADR-016).
+   contra la auditoría append-only (ADR-016). **Detecta, no impide — y hoy solo
+   corre a mano** (`npm run reconciliar`): no está en la suite de integración
+   (`ARQUITECTURA.md` §13.4).
 2. **Las transiciones de estado las hace cumplir la aplicación**, no la base
    (pendiente #17). Están probadas, pero son *verificadas*, no *imposibles*.
 3. **`plan_item_dientes` permite borrar dientes de un plan ya aceptado**: el
    privilegio no distingue un borrador de un plan firmado.
-4. **La FK de reversa contra una columna generada no se ha probado contra
-   PostgreSQL real** (pendiente #14). Si `migrate deploy` la rechaza, el Plan B
-   está escrito en `ARQUITECTURA.md` §12.4.
+4. **RESUELTO — ya no es un límite.** La FK de reversa contra la columna generada
+   `monto_negado_centavos` **sí funciona** en PostgreSQL real: la migración
+   `20260718000600_fase_9_caja` la aplica y `tests/integration/fase9-caja.test.ts`
+   prueba que una reversa por monto distinto la rechaza. El Plan B de
+   `ARQUITECTURA.md` §12.4 quedó sin usarse y la pendiente #14 está cerrada.
+   *Este punto decía lo contrario hasta el Ciclo 20 y contradecía a `ARQUITECTURA.md`.*
 
 ---
 

@@ -31,8 +31,16 @@ de una clínica: agendar, atender, diagnosticar, planificar, ejecutar, cobrar y 
 | Inventario | Stock que no puede quedar negativo; movimientos append-only. |
 | Tablero e historial | KPIs del día y el recorrido completo del paciente en una línea de tiempo. |
 
-**Pendiente de entorno:** las migraciones deben aplicarse en Neon con `clident_migrator` y el
-CI debe correr por primera vez. Ver [OPERACION.md](docs/OPERACION.md).
+El CI valida cada cambio con lint, typecheck, las pruebas unitarias y el build de producción.
+
+> **La suite de integración está escrita pero todavía no corre en CI.** El job existe y exige
+> tres secretos; falta `TEST_DATABASE_CONFIRM=pruebas`, así que termina en verde en 5 segundos
+> **sin ejecutar ninguna prueba**. Eso deja sin verificación automática justo lo que solo la
+> base demuestra: RLS, privilegios append-only, los `EXCLUDE` contra el doble booking, las FK
+> compuestas y la reconciliación del dinero. Configurar ese secreto activa las 140 pruebas.
+
+Al preparar un entorno nuevo, los roles deben inicializarse y las migraciones aplicarse en Neon
+con `clident_migrator`. Ver [OPERACION.md](docs/OPERACION.md).
 
 ## Arquitectura
 
