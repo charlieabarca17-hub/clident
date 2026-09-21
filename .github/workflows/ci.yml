@@ -98,4 +98,9 @@ jobs:
           TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
           TEST_MIGRATION_DATABASE_URL: ${{ secrets.TEST_MIGRATION_DATABASE_URL }}
           TEST_DATABASE_CONFIRM: ${{ secrets.TEST_DATABASE_CONFIRM }}
+          # `src/server/db/client.ts` valida DATABASE_URL al importarse, así que toda
+          # suite que toque un repositorio la exige. Es la credencial de `clident_app`
+          # (la misma de TEST_DATABASE_URL): nunca la migradora, que solo prepara la
+          # base y no debe existir en runtime (CLAUDE.md §17, ADR-010).
+          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
         run: npm run test:integration
