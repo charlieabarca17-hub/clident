@@ -186,6 +186,7 @@ Estas cosas **no se implementan y después se muestran**. Se proponen, se discut
 | Regla | Detalle |
 |---|---|
 | Rama por ciclo | `ciclo-N-descripcion-corta`. Nunca directo sobre `main`. |
+| **Antes de nombrar la rama** | Correr `git branch -a` **y** `git worktree list`. Un número de ciclo repetido esconde trabajo real: en septiembre de 2026 las ramas `ciclo-16` a `ciclo-19` ya existían con 4 commits sin publicar, y tanto el plan como el agente propusieron reusar esos números. |
 | Un ciclo = un commit coherente | Mensajes en español, explicando **por qué**, no qué. |
 | Commit | Solo cuando Carlos lo pide. |
 | Push | Solo con autorización explícita. **Nunca en silencio.** |

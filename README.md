@@ -31,8 +31,19 @@ de una clínica: agendar, atender, diagnosticar, planificar, ejecutar, cobrar y 
 | Inventario | Stock que no puede quedar negativo; movimientos append-only. |
 | Tablero e historial | KPIs del día y el recorrido completo del paciente en una línea de tiempo. |
 
-**Pendiente de entorno:** las migraciones deben aplicarse en Neon con `clident_migrator` y el
-CI debe correr por primera vez. Ver [OPERACION.md](docs/OPERACION.md).
+El CI valida cada cambio con lint, typecheck, las pruebas unitarias y el build de producción,
+**y además corre la suite de integración contra PostgreSQL real** en la rama `pruebas` de Neon:
+**9 archivos, 140 pruebas, las 140 en verde** (verificado el 2026-09-21). Eso cubre lo que solo
+la base demuestra: RLS, privilegios append-only, los `EXCLUDE` contra el doble booking, las FK
+compuestas y la reconciliación del dinero.
+
+> **Hasta el 2026-09-20 esa suite no corría.** El job se saltaba entero por falta del secreto
+> `TEST_DATABASE_CONFIRM=pruebas` y terminaba en verde en 5 segundos sin ejecutar nada, durante
+> dos meses. Si volvés a ver el job de integración durando menos de 30 segundos, **no corrió**:
+> revisá los pasos, no la palomita.
+
+Al preparar un entorno nuevo, los roles deben inicializarse y las migraciones aplicarse en Neon
+con `clident_migrator`. Ver [OPERACION.md](docs/OPERACION.md).
 
 ## Arquitectura
 
