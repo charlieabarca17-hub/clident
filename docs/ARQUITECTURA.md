@@ -1064,7 +1064,7 @@ HAVING c.monto_aplicado_centavos <> COALESCE(SUM(a.monto_centavos), 0);
 
 La suma incluye las reversas con su signo negativo (§12.4), así que la consulta no cambia cuando existen.
 
-**Son cinco controles, definidos una sola vez en `infra/reconciliar.ts`, y los cinco deben devolver cero filas. Cuatro los verifica la suite de integración; el quinto todavía no forma parte de ella. Y esa suite hoy NO se ejecuta en CI: falta el secreto `TEST_DATABASE_CONFIRM=pruebas`, así que el job termina en verde sin correr una sola prueba.**
+**Son cinco controles, definidos una sola vez en `infra/reconciliar.ts`, y los cinco deben devolver cero filas. Cuatro los verifica la suite de integración —que desde el 2026-09-21 sí corre en cada CI contra PostgreSQL real—; el quinto todavía no forma parte de ella y depende de que alguien ejecute `npm run reconciliar`.**
 
 | # | Control | Contra | ¿Lo verifica la suite? |
 |---|---|---|---|
@@ -1074,7 +1074,7 @@ La suma incluye las reversas con su signo negativo (§12.4), así que la consult
 | 4 | `cargos.monto_centavos` | `Σ lineas_cargo.monto_centavos` del cargo | Sí — `fase9-caja.test.ts` |
 | 5 | anulaciones vigentes | `auditoria` registra una anulación pero la fila aparece otra vez como vigente (ADR-016 #12) | **No — solo con `npm run reconciliar`** |
 
-> **Dos huecos declarados del mecanismo, no del diseño.** (a) El control #5 vive únicamente en `infra/reconciliar.ts`: se verifica cuando alguien corre el script a mano, no en CI. (b) Las cuatro consultas que sí corren están **copiadas** dentro de las pruebas en vez de importarse de `CONSULTAS_RECONCILIACION`: si alguien corrige el script, la prueba sigue verificando la versión vieja sin avisar. Mientras los dos sigan abiertos, la afirmación honesta es *"cuatro controles los verifica la suite de integración y el quinto depende de que alguien corra el script a mano — y hoy ni siquiera esa suite corre sola, porque el job de CI se salta por falta de `TEST_DATABASE_CONFIRM`"*. Cerrarlos —que las pruebas importen las consultas y que la #5 entre a la suite— es un ciclo pendiente del plan (`docs/planes/PLAN-CLINICAL-2.0.md`, Ciclo 22).
+> **Dos huecos declarados del mecanismo, no del diseño.** (a) El control #5 vive únicamente en `infra/reconciliar.ts`: se verifica cuando alguien corre el script a mano, no en CI. (b) Las cuatro consultas que sí corren están **copiadas** dentro de las pruebas en vez de importarse de `CONSULTAS_RECONCILIACION`: si alguien corrige el script, la prueba sigue verificando la versión vieja sin avisar. Mientras los dos sigan abiertos, la afirmación honesta es *"cuatro controles los verifica la suite de integración en cada CI, y el quinto depende de que alguien corra el script a mano"*. Cerrarlos —que las pruebas importen las consultas y que la #5 entre a la suite— es un ciclo pendiente del plan (`docs/planes/PLAN-CLINICAL-2.0.md`, Ciclo 22).
 
 La #4 cubre un hueco que nada más vigila: **nada garantiza que las líneas de un cargo sumen su monto.** ADR-016 fijó que todo cargo lleva al menos una línea; las cuotas usan una línea sin procedimiento. Un cargo de $200 con líneas por $150 pasa los `CHECK` de fila y cuadra con sus pagos, pero la reconciliación lo detecta.
 
