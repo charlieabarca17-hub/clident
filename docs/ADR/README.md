@@ -37,6 +37,7 @@ Los ADR existen porque las decisiones de este proyecto tienen razones que no se 
 | [ADR-016](ADR-016-forma-de-cobro-y-cuotas.md) | Forma del cobro, cuotas y pendientes de Caja | Aceptado — *superseded parcialmente por ADR-017* |
 | [ADR-017](ADR-017-precio-acordado-y-cobro-unico.md) | Precio acordado por paciente y cobro único por tratamiento | Aceptado |
 | [ADR-018](ADR-018-catalogo-sin-precios.md) | El catálogo no contiene precios | Aceptado — *documentado a posteriori* |
+| [ADR-019](ADR-019-google-calendar-por-odontologo.md) | Google Calendar por odontólogo, sin datos clínicos | Aceptado — *documentado a posteriori* |
 
 ## Formato
 
