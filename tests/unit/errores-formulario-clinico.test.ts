@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   ESTADO_INICIAL,
   MENSAJE_RESULTADO_INCIERTO,
+  avisoDeFormulario,
   errorAlGuardar,
   errorDeFormulario,
   mensajesDeError,
@@ -263,5 +264,63 @@ describe("caso 6 · resultado incierto: no se invita a duplicar un hecho clínic
   it("lo escrito se conserva también cuando el resultado es incierto", () => {
     const estado = errorAlGuardar(new Error("lo que sea"), { notasClinicas: "Nota larga" });
     expect(estado.valores.notasClinicas).toBe("Nota larga");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Corrección del hallazgo #3 de la auditoría del 21-sep-2026.
+//
+// El estado "no se sabe si quedó registrado" se colapsaba en `"error"`, y los dos
+// formularios clínicos tenían escrito fijo *"No se registró el procedimiento"* y
+// *"corregí y volvé a guardar"*. O sea: el aviso contradecía, en su propio
+// encabezado, al mensaje que traía debajo — y empujaba al profesional justo a la
+// acción que `MENSAJE_RESULTADO_INCIERTO` existe para evitar. Un segundo guardado
+// sobre una escritura que sí ocurrió deja dos procedimientos y dos juegos de
+// eventos clínicos que ya no se borran: se anulan con motivo y quedan a la vista.
+// ---------------------------------------------------------------------------
+
+describe("resultado incierto ≠ error de validación", () => {
+  const VALORES = { notasClinicas: "Se aplicó anestesia local." };
+
+  it("un fallo desconocido produce estado 'incierto', no 'error'", () => {
+    const estado = errorAlGuardar(new Error("ECONNRESET"), VALORES);
+    expect(estado.estado).toBe("incierto");
+    expect(estado.mensajes).toEqual([MENSAJE_RESULTADO_INCIERTO]);
+    // Lo escrito se conserva igual: el profesional no pierde la nota clínica.
+    expect(estado.valores).toEqual(VALORES);
+  });
+
+  it("una regla clínica sigue siendo 'error': ahí sí se sabe que no se escribió", () => {
+    const estado = errorAlGuardar(new ErrorReglaClinica("Este tratamiento es de boca completa: no lleva piezas."), VALORES);
+    expect(estado.estado).toBe("error");
+  });
+
+  it("con resultado incierto, el aviso NO afirma que no se registró ni manda a volver a guardar", () => {
+    const { titulo, pie } = avisoDeFormulario("incierto", "el procedimiento");
+    expect(titulo).not.toMatch(/No se registró/i);
+    expect(titulo).toMatch(/no se pudo confirmar/i);
+    expect(pie).toMatch(/revisá la historia del paciente/i);
+    expect(pie).not.toMatch(/volvé a guardar\b(?!.*revisá)/i);
+  });
+
+  it("con un error de regla, el aviso sí afirma que no se registró y manda a corregir", () => {
+    const { titulo, pie } = avisoDeFormulario("error", "el hallazgo");
+    expect(titulo).toMatch(/No se registró el hallazgo/);
+    expect(pie).toMatch(/corregí y volvé a guardar/);
+  });
+
+  // Prueba estructural: el texto vive en `formulario.ts`, con prueba. Si alguien lo
+  // vuelve a escribir fijo dentro de un formulario, esto falla — que es el punto.
+  it("ningún formulario clínico afirma por su cuenta que no se registró", () => {
+    const FORMULARIOS = [
+      "src/app/(app)/pacientes/[id]/procedimientos/formulario-procedimiento.tsx",
+      "src/app/(app)/pacientes/[id]/odontograma/formulario-condicion.tsx",
+    ];
+    for (const archivo of FORMULARIOS) {
+      const fuente = readFileSync(join(process.cwd(), archivo), "utf8");
+      expect(fuente, `${archivo} escribe el encabezado a mano`).not.toMatch(/No se registró el/);
+      expect(fuente, `${archivo} escribe el pie a mano`).not.toMatch(/corregí y volvé a guardar/);
+      expect(fuente, `${archivo} no usa avisoDeFormulario`).toMatch(/avisoDeFormulario\(estado\.estado/);
+    }
   });
 });

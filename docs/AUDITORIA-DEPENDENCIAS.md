@@ -77,17 +77,53 @@ escriba en el futuro un `if (await auth())`, y eso es disciplina, no mecanismo.
 
 ---
 
-## 4. Los demás
+## 4. Los demás — y de dónde vienen de verdad
 
-`undici`, `nanoid`, `browserslist`, `brace-expansion`, `qs`, `js-yaml`, `fast-uri`,
-`ip-address`, `baseline-browser-mapping`: transitivos de las herramientas de build y
-del CLI de Prisma. Ninguno es dependencia directa. Se arreglan con `npm audit fix`
-(sin `--force`) o solos, al subir Next y Prisma.
+> **Corrección (21-sep, tras la auditoría independiente).** Este apartado decía
+> que los transitivos eran "de las herramientas de build y del CLI de Prisma" y
+> que `sharp` "no llega al paquete de producción". **Las dos cosas son falsas.**
+> El árbol real de `npm ls --omit=dev` dice otra cosa, y de ahí sale el hallazgo
+> más útil de todo este informe.
 
-`sharp` y `@vitest/mocker` no llegan al paquete de producción de esta aplicación
-—`sharp` lo instala Vercel para optimizar imágenes, que CLIDENT no usa hoy.
+**`shadcn` está declarado en `dependencies`, no en `devDependencies`.** Es un CLI
+de andamiaje: sirve para *generar* componentes mientras se programa, y no ejecuta
+nada en producción. Declarado donde está, arrastra al árbol de producción
+`@babel/core`, `@modelcontextprotocol/sdk`, `express-rate-limit`, `@dotenvx/dotenvx`
+y `cosmiconfig`, y con ellos **`undici`, `js-yaml`, `ip-address`, `browserslist` y
+`qs`** — es decir, la mayoría de los 24 avisos.
 
----
+| Paquete | De dónde cuelga realmente |
+|---|---|
+| `undici`, `js-yaml`, `ip-address`, `browserslist` | **`shadcn`** (dependencia de producción) |
+| `qs` | **`googleapis`** y `shadcn` |
+| `brace-expansion` | **`googleapis`** |
+| `sharp` | **`next`** — sí está en producción; es el optimizador de imágenes |
+| `@prisma/dev`, `mysql2`, `valibot`, `hono`, `deepmerge-ts`, `@prisma/config` | el CLI de `prisma` |
+
+**Sobre `sharp` y el aviso de AVIF:** la vulnerabilidad crítica de Next en la API
+de optimización de imágenes pasa justamente por `sharp`, que sí se instala en
+producción. No se confirmó que CLIDENT tenga hoy una ruta por la que llegue un
+AVIF —el sistema no sube ni sirve imágenes de usuario—, pero **la afirmación de
+que "no llega a producción" era incorrecta** y no debe usarse para descartar el
+riesgo.
+
+**Sobre la severidad del fail-open de Auth.js:** `npm audit` lo devuelve como
+*critical*; el aviso del mantenedor en GitHub lo clasifica más bajo, y reserva
+*critical* para el normalizador de correo del proveedor Email. Las dos fuentes
+discrepan. Lo que no cambia es la conclusión de §2.2, que se verificó contra el
+código: CLIDENT usa solo `Credentials`, y `requireCtx()` no hace el chequeo por
+existencia del que depende ese fallo.
+
+### Lo que esto agrega a la propuesta
+
+**Mover `shadcn` a `devDependencies` probablemente elimine más avisos que todas
+las actualizaciones juntas**, y de paso saca de producción un CLI que nunca
+debió estar ahí — `CLAUDE.md` §15 habla de un stack cerrado de 8 piezas, y esto
+mete Babel y un servidor de rate limiting en el árbol.
+
+**No se hizo en este ciclo.** Mover una dependencia de sitio es tocar el stack:
+se propone y se aprueba antes (`FLUJO-DE-DESARROLLO.md` §5). Hay que verificar
+primero que nada del build en Vercel invoque el CLI de `shadcn`.
 
 ## 5. Propuesta
 
@@ -96,7 +132,8 @@ del CLI de Prisma. Ninguno es dependencia directa. Se arreglan con `npm audit fi
 1. Subir `next` de `16.2.10` a `16.3.5` en `package.json`.
 2. Subir `next-auth` de `5.0.0-beta.31` a `5.0.0-beta.32`.
 3. Correr `npm audit fix` **sin `--force`** para los transitivos.
-4. Gate completo: lint, typecheck, 212 unitarias, **140 de integración** y build.
+4. **Evaluar mover `shadcn` a `devDependencies`** (§4). Es el cambio de mayor efecto y el único que además reduce lo que se despliega.
+5. Gate completo: lint, typecheck, 217 unitarias, **140 de integración** y build.
 
 **No hacer, hasta nuevo aviso:** tocar Prisma, ni con `audit fix --force` ni a mano.
 

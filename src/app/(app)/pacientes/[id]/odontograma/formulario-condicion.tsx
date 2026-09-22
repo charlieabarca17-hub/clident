@@ -4,7 +4,7 @@ import { useActionState } from "react";
 
 import { DIENTES, SUPERFICIES } from "@/lib/dientes";
 import { CONDICIONES_DENTALES } from "@/lib/odontograma";
-import { ESTADO_INICIAL } from "@/lib/formulario";
+import { avisoDeFormulario, ESTADO_INICIAL } from "@/lib/formulario";
 import { registrarCondicionDesdeFormulario } from "@/server/actions/odontograma";
 
 /**
@@ -35,10 +35,11 @@ export function FormularioCondicion({
           aria-live="polite"
           className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive sm:col-span-2"
         >
-          <p className="font-medium">No se registró el hallazgo. Revisá esto:</p>
+          <p className="font-medium">{avisoDeFormulario(estado.estado, "el hallazgo").titulo}</p>
           <ul className="mt-1 list-disc pl-5">
             {estado.mensajes.map((mensaje) => <li key={mensaje}>{mensaje}</li>)}
           </ul>
+          <p className="mt-2 text-xs">{avisoDeFormulario(estado.estado, "el hallazgo").pie}</p>
         </div>
       ) : null}
 

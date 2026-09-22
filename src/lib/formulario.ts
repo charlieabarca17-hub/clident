@@ -17,7 +17,14 @@ import { esErrorReglaClinica } from "@/lib/errors";
  */
 
 export type EstadoFormulario = {
-  readonly estado: "inicial" | "error";
+  /**
+   * `"error"` y `"incierto"` **no son lo mismo y no se pintan igual.** En `error`
+   * la guarda rechazó antes de escribir: se sabe que no quedó registrado y se
+   * puede corregir y volver a guardar. En `incierto` nadie sabe si quedó: decirle
+   * "no se registró" al profesional es invitarlo a duplicar un hecho clínico que
+   * después solo se puede anular con motivo, porque nada se borra (§9).
+   */
+  readonly estado: "inicial" | "error" | "incierto";
   /** Lo que se le muestra al profesional. Ya viene en español y sin tecnicismos. */
   readonly mensajes: readonly string[];
   /** Lo que había tecleado, para volver a pintarlo tal cual. */
@@ -109,5 +116,34 @@ export function errorAlGuardar(
   valores: Readonly<Record<string, string>>,
 ): EstadoFormulario {
   if (esErrorReglaClinica(error)) return errorDeFormulario([error.message], valores);
-  return errorDeFormulario([MENSAJE_RESULTADO_INCIERTO], valores);
+  return { estado: "incierto", mensajes: [MENSAJE_RESULTADO_INCIERTO], valores };
+}
+
+/**
+ * El encabezado y el pie del aviso, elegidos por el estado.
+ *
+ * **Por qué vive acá y no en cada formulario.** Estaban escritos fijos dentro de
+ * los componentes: *"No se registró el procedimiento"* arriba y *"corregí y volvé
+ * a guardar"* abajo, se mostraran por lo que se mostraran. Con un resultado
+ * incierto, esas dos frases contradicen al mensaje que el propio aviso trae
+ * debajo y empujan justo a la acción que `MENSAJE_RESULTADO_INCIERTO` existe para
+ * evitar. Acá el texto queda en un solo lugar, con prueba, y ningún formulario
+ * nuevo puede volver a afirmar de más por descuido.
+ *
+ * @param hecho Qué se estaba registrando, en minúscula: "el procedimiento", "el hallazgo".
+ */
+export function avisoDeFormulario(
+  estado: EstadoFormulario["estado"],
+  hecho: string,
+): { readonly titulo: string; readonly pie: string | null } {
+  if (estado === "incierto") {
+    return {
+      titulo: `No se pudo confirmar si se registró ${hecho}.`,
+      pie: "Lo que escribiste sigue acá abajo, pero revisá la historia del paciente antes de volver a guardar.",
+    };
+  }
+  return {
+    titulo: `No se registró ${hecho}. Revisá esto:`,
+    pie: "Lo que escribiste sigue acá abajo; corregí y volvé a guardar.",
+  };
 }

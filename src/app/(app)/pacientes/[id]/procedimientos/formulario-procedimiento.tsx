@@ -4,7 +4,7 @@ import { useActionState } from "react";
 
 import { DIENTES, SUPERFICIES } from "@/lib/dientes";
 import { CONDICIONES_DENTALES } from "@/lib/odontograma";
-import { ESTADO_INICIAL } from "@/lib/formulario";
+import { avisoDeFormulario, ESTADO_INICIAL } from "@/lib/formulario";
 import { realizarProcedimientoDesdeFormulario } from "@/server/actions/procedimientos";
 
 /**
@@ -41,11 +41,11 @@ export function FormularioProcedimiento({
           aria-live="polite"
           className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
-          <p className="font-medium">No se registró el procedimiento. Revisá esto:</p>
+          <p className="font-medium">{avisoDeFormulario(estado.estado, "el procedimiento").titulo}</p>
           <ul className="mt-1 list-disc pl-5">
             {estado.mensajes.map((mensaje) => <li key={mensaje}>{mensaje}</li>)}
           </ul>
-          <p className="mt-2 text-xs">Lo que escribiste sigue acá abajo; corregí y volvé a guardar.</p>
+          <p className="mt-2 text-xs">{avisoDeFormulario(estado.estado, "el procedimiento").pie}</p>
         </div>
       ) : null}
 
