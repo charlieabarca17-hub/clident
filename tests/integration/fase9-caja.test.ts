@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import pg, { type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { CONSULTAS_RECONCILIACION } from "../../infra/reconciliar.ts";
+
 import { generarFechasCuotasMensuales, hoyElSalvador } from "@/lib/fechas";
 import { CrearPacienteSchema } from "@/lib/validation/pacientes";
 import type { TenantContext } from "@/server/auth/types";
@@ -542,33 +544,35 @@ describe("pagos, aplicaciones y los dos contadores", () => {
 });
 
 describe("reconciliación — la red del dinero", () => {
-  it("las consultas #1, #2 y #4 devuelven cero filas, con datos de verdad", async () => {
-    const guarda = await migrator.query("SELECT count(*)::int AS total FROM cargos");
-    expect(guarda.rows[0].total).toBeGreaterThan(0);
-
-    const c1 = await migrator.query(
-      `SELECT c.id FROM cargos c
-       LEFT JOIN aplicaciones_pago a ON a.cargo_id = c.id
-       GROUP BY c.id, c.monto_aplicado_centavos
-       HAVING c.monto_aplicado_centavos <> COALESCE(SUM(a.monto_centavos), 0)`,
+  it("las cinco consultas de infra/reconciliar.ts devuelven cero filas, con datos de verdad", async () => {
+    // Las consultas NO se copian acá: se importan del script que corre en
+    // producción. Una copia se desincroniza del original y la suite termina
+    // verificando una consulta que ya no existe (ARQUITECTURA §13.4).
+    const guarda = await migrator.query(
+      "SELECT (SELECT count(*)::int FROM cargos) AS cargos, (SELECT count(*)::int FROM pagos) AS pagos",
     );
-    expect(c1.rows).toEqual([]);
+    expect(guarda.rows[0].cargos).toBeGreaterThan(0);
+    expect(guarda.rows[0].pagos).toBeGreaterThan(0);
 
-    const c2 = await migrator.query(
-      `SELECT p.id FROM pagos p
-       LEFT JOIN aplicaciones_pago a ON a.pago_id = p.id
-       GROUP BY p.id, p.monto_aplicado_centavos
-       HAVING p.monto_aplicado_centavos <> COALESCE(SUM(a.monto_centavos), 0)`,
+    // El control #5 pasaría por vacío si nadie hubiera anulado nada: sin filas
+    // de auditoría con esas acciones, no hay resurrección posible que encontrar.
+    const anulaciones = await migrator.query(
+      `SELECT DISTINCT accion FROM auditoria
+       WHERE accion IN ('CARGO_ANULADO', 'PAGO_ANULADO')`,
     );
-    expect(c2.rows).toEqual([]);
+    expect(anulaciones.rows.map((f) => f.accion).sort()).toEqual([
+      "CARGO_ANULADO",
+      "PAGO_ANULADO",
+    ]);
 
-    const c4 = await migrator.query(
-      `SELECT c.id FROM cargos c
-       LEFT JOIN lineas_cargo l ON l.cargo_id = c.id
-       GROUP BY c.id, c.monto_centavos
-       HAVING c.monto_centavos <> COALESCE(SUM(l.monto_centavos), 0)`,
-    );
-    expect(c4.rows).toEqual([]);
+    // Si alguien borra una consulta del script, esto falla en vez de bajar la
+    // cobertura en silencio.
+    expect(CONSULTAS_RECONCILIACION).toHaveLength(5);
+
+    for (const consulta of CONSULTAS_RECONCILIACION) {
+      const resultado = await migrator.query(consulta.sql);
+      expect(resultado.rows, `${consulta.nombre}: devolvió filas descuadradas`).toEqual([]);
+    }
   });
 
   it("la app no puede editar ni borrar dinero descompuesto ni aplicado", async () => {
