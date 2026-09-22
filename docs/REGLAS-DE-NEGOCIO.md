@@ -188,7 +188,9 @@ Además, **la base de datos obliga al orden correcto**: un cargo con dinero apli
 
 ## 2.1 Los precios de un plan no cambian nunca
 
-**La regla:** el precio del catálogo es una referencia. Cuando se agrega un tratamiento al plan, el odontólogo decide el precio para ese paciente. Ese monto queda guardado y **no cambia nunca**, aunque después cambie el catálogo. Ni siquiera mientras el plan está en borrador.
+**La regla:** el catálogo **no tiene precios**. Cuando se agrega un tratamiento al plan, el odontólogo escribe el precio que acordó con ese paciente. Ese monto queda guardado y **no cambia nunca**. Ni siquiera mientras el plan está en borrador.
+
+**Por qué el catálogo no tiene precios:** porque un precio guardado ahí se convertiría en el número que el sistema propone solo, y lo que se propone solo es lo que la gente acepta sin pensar. Como el precio se acuerda paciente por paciente, el sistema no tiene ninguno que proponer (ADR-018).
 
 **Por qué:** un plan es un compromiso con un paciente. Si en marzo le presupuestaste una corona a $300 y en junio la clínica sube el precio a $380, ese paciente presupuestó $300. Si el sistema recalculara automáticamente, el paciente vería un número distinto al que se le dijo, y la clínica no tendría forma de demostrar qué se le ofreció ni cuándo. En términos legales: destruiría la prueba de la oferta.
 
@@ -282,7 +284,7 @@ Tratamientos que genera:
 
 ## 4.2 El catálogo no es lo asignado al paciente
 
-**La regla:** el catálogo maestro (la lista de precios de la clínica) y lo que se le asigna a un paciente son cosas separadas.
+**La regla:** el catálogo maestro (la lista de tratamientos que la clínica ofrece) y lo que se le asigna a un paciente son cosas separadas.
 
 ## 4.3 Lo planificado no es lo realizado
 

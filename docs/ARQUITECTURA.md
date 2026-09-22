@@ -767,9 +767,9 @@ Un índice parcial permite como máximo un cargo directo vigente por `PlanItem`;
 
 ## 12.2 Snapshots (ADR-006)
 
-`Tratamiento.precioListaCentavos` se muestra como referencia. Al crear un `PlanItem`, el odontólogo elige el precio para ese paciente; después, la fuente de verdad es `PlanItem.precioUnitarioCentavos` y queda inmutable.
+**El catálogo no almacena precios (ADR-018).** `Tratamiento` describe el tratamiento —alcance, dientes, superficies, sesiones—; el monto nace cuando el odontólogo crea el `PlanItem` para un paciente concreto. La fuente de verdad es `PlanItem.precioUnitarioCentavos` y queda inmutable.
 
-**Cualquier join de `PlanItem`/`Procedimiento`/`LineaCargo` a `Tratamiento` para obtener un precio es un bug.** Cambiar el catálogo nunca altera un plan existente, **ni siquiera en `BORRADOR`**. También se congelan nombre y código.
+**Cualquier join de `PlanItem`/`Procedimiento`/`LineaCargo` a `Tratamiento` para obtener un precio es un bug**, y desde el ADR-018 es además imposible: no hay columna que leer. Editar el catálogo nunca altera un plan existente, **ni siquiera en `BORRADOR`**. También se congelan nombre y código.
 
 ## 12.3 Dinero: centavos enteros (ADR-009)
 

@@ -70,6 +70,8 @@ Todo eso vive en **migraciones SQL escritas a mano** que Prisma no conoce. Tras 
 
 No existe script `db:push` en `package.json`. No lo agregues. Si un agente te sugiere `db push` "para ir más rápido", está proponiendo borrar la seguridad del sistema.
 
+**Y te lo va a sugerir una fuente que parece confiable.** La skill oficial de Prisma instalada en `.agents/skills/prisma-cli/` documenta `db push` —incluidos `--force-reset` y `--accept-data-loss`— como uso normal, porque para el proyecto promedio lo es. **Una skill no autoriza nada acá** (ver `AGENTS.md`). Lo único que hoy impide el desastre es que `clident_app` no es dueño de las tablas: `db push` con la credencial de runtime falla. Con `MIGRATION_DATABASE_URL` a mano, no falla — por eso esa URL no vive en runtime (§17).
+
 **Migraciones: siempre `prisma migrate dev --create-only` + SQL a mano + `prisma migrate deploy`.** Nunca otra cosa.
 
 ---
@@ -119,16 +121,18 @@ PACIENTE → EXPEDIENTE → ODONTOGRAMA → DIAGNÓSTICO → PLAN DE TRATAMIENTO
 
 ## 7. Precios históricos (snapshots)
 
-> `Tratamiento.precioListaCentavos` es una referencia visual. Al crear el `PlanItem`, el odontólogo fija `PlanItem.precioUnitarioCentavos` para ese paciente; después queda inmutable.
+> **El catálogo no tiene precios** (ADR-018). `Tratamiento` describe el tratamiento; no lo cotiza. El único precio del sistema lo escribe el odontólogo en `PlanItem.precioUnitarioCentavos` al armar el plan de ese paciente, y ahí queda inmutable.
 
-**Cualquier consulta que haga join de `PlanItem` (o `Procedimiento`, o `LineaCargo`) a `Tratamiento` para mostrar o calcular un precio es un bug.**
+**Cualquier consulta que haga join de `PlanItem` (o `Procedimiento`, o `LineaCargo`) a `Tratamiento` para mostrar o calcular un precio es un bug** — hoy ni siquiera compila, porque no hay columna de precio que leer. Esa es la idea.
 
-- Cambiar el precio del catálogo **nunca** altera un plan existente — **ni siquiera uno en `BORRADOR`**.
+- No existe "precio de catálogo": editar un `Tratamiento` **no puede** alterar un plan existente — **ni siquiera uno en `BORRADOR`**.
 - También se congelan `tratamientoNombre` y `tratamientoCodigo`: renombrar "Resina" → "Restauración con resina" no debe reescribir la historia.
 - Desactivar un tratamiento (`activo = false`) solo lo saca del selector. **Nunca afecta planes existentes.**
 - El precio del `PlanItem` es el total del tratamiento completo. Si hay varias sesiones, la primera conserva ese total como snapshot clínico y las siguientes llevan $0; Caja cobra el `PlanItem` una sola vez (ADR-017).
 
 **Advertencia para agentes:** vas a ver `tratamientoNombre` duplicado en `PlanItem` y te va a dar ganas de "normalizarlo" con un join. **Eso es exactamente el bug.** Los campos snapshot son deliberados. No los toques.
+
+**Segunda advertencia:** vas a notar que el catálogo no tiene precio y te va a parecer que falta algo. **No falta: se quitó a propósito** (ADR-018). Un precio en el catálogo se convierte en el valor por defecto del formulario, y ese default es justo lo que anula el precio acordado por paciente del ADR-017. No lo devuelvas.
 
 ---
 
