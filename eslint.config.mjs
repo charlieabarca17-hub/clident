@@ -95,6 +95,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+
+    // Skills de agentes instaladas por autoskills. Son material de referencia de
+    // terceros, no código de CLIDENT: sus plantillas ensuciaban `npm run lint`
+    // con avisos sobre archivos que el proyecto no controla ni puede arreglar, y
+    // un lint con ruido crónico es un lint que se deja de leer.
+    ".agents/**",
   ]),
 
   {
