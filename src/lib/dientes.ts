@@ -67,3 +67,28 @@ export const DIENTES: readonly Diente[] = [
 export function buscarDiente(fdi: number): Diente | undefined {
   return DIENTES.find((diente) => diente.fdi === fdi);
 }
+
+/**
+ * La pieza y la cara que vienen en la URL del odontograma, ya validadas.
+ *
+ * El clic en una cara viaja por la barra de direcciones —así el enlace se
+ * comparte y el botón de atrás funciona— y eso la vuelve **entrada de usuario**:
+ * cualquiera puede escribir `?fdi=11&cara=OCLUSAL`. Un incisivo no tiene cara
+ * oclusal, y pintar una cara que esa pieza no tiene es un dibujo que miente.
+ *
+ * Devuelve `null` ante cualquier cosa que no sea una pieza real con una cara que
+ * esa pieza efectivamente tiene. No lanza: una URL mal escrita muestra el
+ * odontograma sin selección, no un error.
+ */
+export function seleccionDeCara(
+  fdi: unknown,
+  cara: unknown,
+): { readonly fdi: number; readonly superficie: Superficie } | null {
+  if (typeof fdi !== "string" || typeof cara !== "string") return null;
+  // Number("") es 0 y Number(" 26 ") es 26: ninguno de los dos debe pasar.
+  if (!/^\d{2}$/.test(fdi)) return null;
+  const diente = buscarDiente(Number(fdi));
+  if (!diente) return null;
+  if (!(diente.superficies as readonly string[]).includes(cara)) return null;
+  return { fdi: diente.fdi, superficie: cara as Superficie };
+}

@@ -17,9 +17,14 @@ import { registrarCondicionDesdeFormulario } from "@/server/actions/odontograma"
 export function FormularioCondicion({
   pacienteId,
   diagnosticos,
+  fdiInicial,
+  caraInicial,
 }: {
   pacienteId: string;
   diagnosticos: ReadonlyArray<{ id: string; descripcion: string }>;
+  /** Vienen del clic en el odontograma. Lo que el usuario ya tecleó manda sobre esto. */
+  fdiInicial?: number | null;
+  caraInicial?: string | null;
 }) {
   const [estado, accion, pendiente] = useActionState(
     registrarCondicionDesdeFormulario,
@@ -45,7 +50,7 @@ export function FormularioCondicion({
 
       <input type="hidden" name="pacienteId" value={pacienteId} />
       <label className="block text-sm font-medium">Pieza *
-        <select name="fdi" required defaultValue={escrito.fdi ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
+        <select name="fdi" required defaultValue={escrito.fdi ?? (fdiInicial ? String(fdiInicial) : "")} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
           <option value="">— Elegí la pieza —</option>
           {DIENTES.map((diente) => (
             <option key={diente.fdi} value={diente.fdi}>
@@ -55,7 +60,7 @@ export function FormularioCondicion({
         </select>
       </label>
       <label className="block text-sm font-medium">Cara *
-        <select name="superficie" required defaultValue={escrito.superficie ?? "COMPLETO"} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
+        <select name="superficie" required defaultValue={escrito.superficie ?? caraInicial ?? "COMPLETO"} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
           {SUPERFICIES.map((superficie) => (
             <option key={superficie} value={superficie}>
               {superficie === "COMPLETO" ? "Pieza completa" : superficie.charAt(0) + superficie.slice(1).toLowerCase()}

@@ -107,11 +107,20 @@ export function DienteDibujado({
   arriba,
   completo,
   caras,
+  hrefDeCara,
+  caraSeleccionada,
+  etiquetaDeCara,
 }: {
   diente: Diente;
   arriba: boolean;
   completo: CondicionDental | null;
   caras: readonly CaraPintada[];
+  /** Si viene, cada cara es un enlace: clic en la cara para trabajar ahí. */
+  hrefDeCara?: (superficie: Superficie) => string;
+  /** La cara que el usuario está mirando, para resaltarla. */
+  caraSeleccionada?: Superficie | null;
+  /** Qué dice el enlace en palabras, para quien no ve el dibujo. */
+  etiquetaDeCara?: (superficie: Superficie) => string;
 }) {
   const zonas = zonasDeLaPieza(diente, arriba);
   const caraCortante = zonas.centro;
@@ -164,32 +173,67 @@ export function DienteDibujado({
           recorte les da la silueta redondeada; sin él serían cinco polígonos
           con esquinas vivas. */}
       <g clipPath={`url(#${recorte})`}>
-        {trapecios.map(({ s, d, tx, ty }) => (
-          <g key={s}>
-            <path d={d} fill={color(s)} stroke="var(--border)" strokeWidth="0.8" strokeLinejoin="round" />
-            {letra(s) ? (
-              <text x={tx} y={ty} textAnchor="middle" dominantBaseline="central" fontSize="7" fontWeight="700" fill={tinta(s)}>
-                {letra(s)}
-              </text>
-            ) : null}
-          </g>
-        ))}
-
-        <rect
-          x="12"
-          y={y + 10}
-          width="16"
-          height={CORONA - 20}
-          rx="3"
-          fill={color(caraCortante)}
-          stroke="var(--border)"
-          strokeWidth="0.8"
-        />
-        {letra(caraCortante) ? (
-          <text x="20" y={y + CORONA / 2} textAnchor="middle" dominantBaseline="central" fontSize="8" fontWeight="700" fill={tinta(caraCortante)}>
-            {letra(caraCortante)}
-          </text>
-        ) : null}
+        {[
+          ...trapecios,
+          {
+            s: caraCortante,
+            rect: { x: 12, y: y + 10, w: 16, h: CORONA - 20 },
+            tx: 20,
+            ty: y + CORONA / 2,
+          },
+        ].map((zona) => {
+          const superficie = zona.s;
+          const forma = "rect" in zona ? (
+            <rect
+              x={zona.rect.x}
+              y={zona.rect.y}
+              width={zona.rect.w}
+              height={zona.rect.h}
+              rx="3"
+              fill={color(superficie)}
+              stroke={caraSeleccionada === superficie ? "var(--primary)" : "var(--border)"}
+              strokeWidth={caraSeleccionada === superficie ? "2" : "0.8"}
+            />
+          ) : (
+            <path
+              d={zona.d}
+              fill={color(superficie)}
+              stroke={caraSeleccionada === superficie ? "var(--primary)" : "var(--border)"}
+              strokeWidth={caraSeleccionada === superficie ? "2" : "0.8"}
+              strokeLinejoin="round"
+            />
+          );
+          const contenido = (
+            <>
+              {forma}
+              {letra(superficie) ? (
+                <text
+                  x={zona.tx}
+                  y={zona.ty}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={"rect" in zona ? "8" : "7"}
+                  fontWeight="700"
+                  fill={tinta(superficie)}
+                  pointerEvents="none"
+                >
+                  {letra(superficie)}
+                </text>
+              ) : null}
+            </>
+          );
+          if (!hrefDeCara) return <g key={superficie}>{contenido}</g>;
+          return (
+            <a
+              key={superficie}
+              href={hrefDeCara(superficie)}
+              aria-label={etiquetaDeCara?.(superficie)}
+              className="cursor-pointer outline-none [&>path]:transition-opacity [&>rect]:transition-opacity hover:[&>path]:opacity-70 hover:[&>rect]:opacity-70 focus-visible:[&>path]:stroke-[2.5] focus-visible:[&>rect]:stroke-[2.5]"
+            >
+              {contenido}
+            </a>
+          );
+        })}
       </g>
 
       {/* El contorno va al final, sobre las caras: es la línea que hace que el

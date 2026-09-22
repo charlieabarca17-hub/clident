@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { zonasDeLaPieza } from "@/components/odontograma/diente-svg";
-import { buscarDiente } from "@/lib/dientes";
+import { buscarDiente, seleccionDeCara } from "@/lib/dientes";
 
 // Ciclo 30. El odontograma dibuja cada pieza con sus cinco caras en posición
 // anatómica. Un espejo acá no se ve: el dibujo queda igual de lindo y la caries
@@ -74,6 +74,52 @@ describe("las cinco zonas son siempre distintas y existen en esa pieza", () => {
       for (const cara of asignadas) {
         expect(diente.superficies, `la pieza ${fdi} no tiene ${cara}`).toContain(cara);
       }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// La cara sobre la que se trabaja viaja en la URL, así que es entrada de usuario.
+// ---------------------------------------------------------------------------
+describe("la selección que llega por la URL se valida antes de usarse", () => {
+  it("acepta una pieza real con una cara que esa pieza tiene", () => {
+    expect(seleccionDeCara("16", "OCLUSAL")).toEqual({ fdi: 16, superficie: "OCLUSAL" });
+    expect(seleccionDeCara("11", "INCISAL")).toEqual({ fdi: 11, superficie: "INCISAL" });
+    expect(seleccionDeCara("16", "PALATINA")).toEqual({ fdi: 16, superficie: "PALATINA" });
+    expect(seleccionDeCara("46", "LINGUAL")).toEqual({ fdi: 46, superficie: "LINGUAL" });
+  });
+
+  it("rechaza una cara que esa pieza no tiene", () => {
+    // Un incisivo no tiene oclusal: tiene incisal.
+    expect(seleccionDeCara("11", "OCLUSAL")).toBeNull();
+    // Un molar no tiene incisal.
+    expect(seleccionDeCara("16", "INCISAL")).toBeNull();
+    // Palatina es de arriba; lingual, de abajo. No se cruzan.
+    expect(seleccionDeCara("16", "LINGUAL")).toBeNull();
+    expect(seleccionDeCara("46", "PALATINA")).toBeNull();
+  });
+
+  it("rechaza piezas inexistentes y basura, sin lanzar", () => {
+    for (const [fdi, cara] of [
+      ["99", "OCLUSAL"],
+      ["19", "OCLUSAL"],
+      ["0", "OCLUSAL"],
+      ["", "OCLUSAL"],
+      [" 16 ", "OCLUSAL"],
+      ["16", "oclusal"],
+      ["16", "DROP TABLE"],
+      ["16", ""],
+    ] as const) {
+      expect(seleccionDeCara(fdi, cara), `${fdi}/${cara} no debería pasar`).toBeNull();
+    }
+    expect(seleccionDeCara(undefined, undefined)).toBeNull();
+    expect(seleccionDeCara(["16"], "OCLUSAL")).toBeNull();
+    expect(seleccionDeCara(16, "OCLUSAL")).toBeNull();
+  });
+
+  it("acepta COMPLETO, que es la pieza entera y la tienen todas", () => {
+    for (const fdi of ["11", "16", "31", "46", "51", "85"]) {
+      expect(seleccionDeCara(fdi, "COMPLETO")).not.toBeNull();
     }
   });
 });

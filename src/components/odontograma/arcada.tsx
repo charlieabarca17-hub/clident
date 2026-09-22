@@ -1,5 +1,5 @@
 import { DienteDibujado } from "@/components/odontograma/diente-svg";
-import { DIENTES, type Diente } from "@/lib/dientes";
+import { DIENTES, type Diente, type Superficie } from "@/lib/dientes";
 import { etiquetaCondicion } from "@/lib/odontograma";
 import type { EstadoSuperficieDto } from "@/server/dto/odontograma";
 
@@ -52,12 +52,16 @@ function DienteCelda({
   indice,
   total,
   arriba,
+  hrefDeCara,
+  seleccion,
 }: {
   diente: Diente;
   estados: Map<string, EstadoSuperficieDto>;
   indice: number;
   total: number;
   arriba: boolean;
+  hrefDeCara?: (fdi: number, superficie: Superficie) => string;
+  seleccion?: { fdi: number; superficie: Superficie } | null;
 }) {
   const completo = estados.get(`${diente.fdi}:COMPLETO`);
   const caras = diente.superficies
@@ -102,6 +106,13 @@ function DienteCelda({
           arriba={arriba}
           completo={completo ? completo.condicion : null}
           caras={caras.map((c) => ({ superficie: c.superficie, condicion: c.estado!.condicion }))}
+          hrefDeCara={hrefDeCara ? (superficie) => hrefDeCara(diente.fdi, superficie) : undefined}
+          caraSeleccionada={seleccion?.fdi === diente.fdi ? seleccion.superficie : null}
+          etiquetaDeCara={(superficie) => {
+            const estado = estados.get(`${diente.fdi}:${superficie}`);
+            const actual = estado ? etiquetaCondicion(estado.condicion) : "sin registro";
+            return `Pieza ${diente.fdi}, cara ${superficie.toLowerCase()}: ${actual}. Trabajar acá.`;
+          }}
         />
       </span>
 
@@ -121,11 +132,16 @@ export function Arcada({
   estados,
   arriba,
   etiqueta,
+  hrefDeCara,
+  seleccion,
 }: {
   dientes: Diente[];
   estados: Map<string, EstadoSuperficieDto>;
   arriba: boolean;
   etiqueta: string;
+  /** Con esto cada cara se vuelve un enlace y el odontograma deja de ser solo lectura. */
+  hrefDeCara?: (fdi: number, superficie: Superficie) => string;
+  seleccion?: { fdi: number; superficie: Superficie } | null;
 }) {
   return (
     <ul
@@ -143,6 +159,8 @@ export function Arcada({
           indice={indice}
           total={dientes.length}
           arriba={arriba}
+          hrefDeCara={hrefDeCara}
+          seleccion={seleccion}
         />
       ))}
     </ul>
