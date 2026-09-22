@@ -51,6 +51,28 @@
 - Pestañas del expediente hoy: Ficha, Diagnósticos, Odontograma, Planes, Procedimientos,
   Historial.
 
+## 0.1 Estado de la Etapa A (actualizado el 2026-09-21)
+
+| Ciclo | Objetivo | Estado |
+|---|---|---|
+| 20 | Saneamiento documental | Commiteado en `ciclo-20-saneamiento-documental`, **sin PR** |
+| 21 | Rescatar los cuatro commits del 13-sep | **Hecho** — rebasados sobre el Ciclo 20 en `ciclo-21-rescate-septiembre`, sin conflictos |
+| 22 | Que la reconciliación verifique lo que promete | **Hecho** — las pruebas importan `CONSULTAS_RECONCILIACION`; las cinco corren y dan cero filas |
+| 23 | `AGENTS.md` | **Hecho** |
+| 24 | ADR-018 (catálogo sin precios) | **Hecho** |
+| 25 | ADR-019 (Google Calendar) | **Hecho** |
+| 26 | Auditoría de dependencias | **Hecho** — informe en `docs/AUDITORIA-DEPENDENCIAS.md`. Nada actualizado: espera decisión de Carlos |
+| 27 | Aplicar las actualizaciones aprobadas | **Bloqueado** por el Ciclo 26 |
+
+**Nada de esto tiene push ni PR.** Las ramas van encadenadas —cada una sale de la
+anterior— y terminan en `ciclo-26-auditoria-dependencias`.
+
+**Pendiente operativo que apareció al verificar:** la credencial de `clident_app`
+para la rama **`desarrollo`** de Neon ya no autentica (`28P01`). La rama `pruebas`
+sí conecta y la suite de integración corre completa contra ella. Desbloquear
+`desarrollo` necesita que Carlos saque la URL nueva de la consola de Neon: no es
+algo que un agente pueda resolver.
+
 ## 1. Orden general (etapas)
 
 Este orden sigue la recomendación de ChatGPT del 2026-09-16, ajustada a las dependencias
