@@ -1,10 +1,6 @@
+import { DienteDibujado } from "@/components/odontograma/diente-svg";
 import { DIENTES, type Diente } from "@/lib/dientes";
-import {
-  colorCondicion,
-  etiquetaCondicion,
-  letraCondicion,
-  textoSobreCondicion,
-} from "@/lib/odontograma";
+import { etiquetaCondicion } from "@/lib/odontograma";
 import type { EstadoSuperficieDto } from "@/server/dto/odontograma";
 
 /**
@@ -96,47 +92,21 @@ function DienteCelda({
       className="flex w-11 shrink-0 flex-col items-center gap-1"
       style={{ transform: `translateY(${desplazamiento}px) rotate(${giro}deg)` }}
     >
-      <span
-        className="flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-bold shadow-sm"
-        style={
-          completo
-            ? {
-                backgroundColor: colorCondicion(completo.condicion),
-                color: textoSobreCondicion(completo.condicion),
-                borderColor: "transparent",
-              }
-            : {
-                backgroundColor: "var(--card)",
-                color: "var(--muted-foreground)",
-                borderColor: "var(--border)",
-              }
-        }
-        aria-hidden="true"
-        title={etiquetaAccesible}
-      >
-        {completo ? letraCondicion(completo.condicion) : ""}
+      {/* La pieza dibujada: corona con sus cinco caras en posición anatómica y
+          raíz según el tipo. Antes las caras eran cuadraditos en fila y solo se
+          sabía cuál era mesial pasando el mouse; un odontólogo lee la posición,
+          no el tooltip. */}
+      <span title={etiquetaAccesible}>
+        <DienteDibujado
+          diente={diente}
+          arriba={arriba}
+          completo={completo ? completo.condicion : null}
+          caras={caras.map((c) => ({ superficie: c.superficie, condicion: c.estado!.condicion }))}
+        />
       </span>
 
       <span className="font-mono text-[11px] leading-none text-muted-foreground" aria-hidden="true">
         {diente.fdi}
-      </span>
-
-      {/* Marcas de cara. Cada una lleva su color y su letra, igual que la pieza
-          completa: una cara con caries se lee "C" aunque el rojo no se vea. */}
-      <span className="flex h-3 items-center gap-0.5" aria-hidden="true">
-        {caras.map((cara) => (
-          <span
-            key={cara.superficie}
-            className="flex h-3 w-3 items-center justify-center rounded-[4px] text-[8px] font-bold leading-none"
-            style={{
-              backgroundColor: colorCondicion(cara.estado!.condicion),
-              color: textoSobreCondicion(cara.estado!.condicion),
-            }}
-            title={`${cara.superficie.toLowerCase()}: ${etiquetaCondicion(cara.estado!.condicion)}`}
-          >
-            {letraCondicion(cara.estado!.condicion)}
-          </span>
-        ))}
       </span>
 
       {/* Todo lo de arriba es `aria-hidden` porque es una traducción visual del
