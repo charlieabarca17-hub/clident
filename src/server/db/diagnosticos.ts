@@ -69,6 +69,9 @@ export async function crearDiagnostico(ctx: TenantContext, input: CrearDiagnosti
     const creado = await tx.diagnostico.create({
       data: {
         clinicaId: ctx.clinicaId,
+        // Sale del paciente cuyo expediente se resolvió arriba; la FK compuesta
+        // contra `expedientes` no deja que diga otra cosa.
+        pacienteId: input.pacienteId,
         expedienteId,
         descripcion: input.descripcion,
         notas: input.notas,

@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Prisma } from "./generated/client";
 import type { TenantContext } from "@/server/auth/types";
+import { ErrorReglaClinica } from "@/lib/errors";
 import { requirePermiso } from "@/server/auth/permissions";
 import { hoyElSalvador } from "@/lib/fechas";
 import type {
@@ -392,14 +393,25 @@ export async function aplicarPago(ctx: TenantContext, input: AplicarPagoInput) {
     const [pago, cargo] = await Promise.all([
       tx.pago.findFirst({
         where: { id: input.pagoId, clinicaId: ctx.clinicaId, anuladoEn: null },
-        select: { id: true },
+        select: { id: true, pacienteId: true },
       }),
       tx.cargo.findFirst({
         where: { id: input.cargoId, clinicaId: ctx.clinicaId, anuladoEn: null },
-        select: { id: true },
+        select: { id: true, pacienteId: true },
       }),
     ]);
     if (!pago || !cargo) return null;
+
+    // Segunda capa (§2.7). La primera es la FK compuesta, que hace imposible la
+    // fila cruzada; esta existe para que el rechazo sea legible en vez de una
+    // violación de FK. Antes no había ninguna de las dos: un pago de un paciente
+    // aplicado al cargo de otro pasaba, movía los dos contadores de forma
+    // coherente y las cinco consultas de reconciliación seguían en cero.
+    if (pago.pacienteId !== cargo.pacienteId) {
+      throw new ErrorReglaClinica(
+        "Ese pago y ese cargo son de pacientes distintos. Un pago solo se aplica a los cargos del paciente que lo hizo.",
+      );
+    }
 
     // Orden de bloqueo §13.3: primero el pago, después el cargo.
     await tx.pago.update({
@@ -417,6 +429,7 @@ export async function aplicarPago(ctx: TenantContext, input: AplicarPagoInput) {
     const aplicacion = await tx.aplicacionPago.create({
       data: {
         clinicaId: ctx.clinicaId,
+        pacienteId: cargo.pacienteId,
         pagoId: pago.id,
         cargoId: cargo.id,
         montoCentavos: input.montoCentavos,
@@ -447,7 +460,7 @@ export async function reversarAplicacion(ctx: TenantContext, aplicacionId: strin
         clinicaId: ctx.clinicaId,
         reversaDeAplicacionId: null,
       },
-      select: { id: true, pagoId: true, cargoId: true, montoCentavos: true },
+      select: { id: true, pacienteId: true, pagoId: true, cargoId: true, montoCentavos: true },
     });
     if (!original) return null;
 
@@ -478,6 +491,9 @@ export async function reversarAplicacion(ctx: TenantContext, aplicacionId: strin
     const reversa = await tx.aplicacionPago.create({
       data: {
         clinicaId: ctx.clinicaId,
+        // El mismo paciente que la original, por definición: la reversa apunta
+        // al mismo pago y al mismo cargo.
+        pacienteId: original.pacienteId,
         pagoId: original.pagoId,
         cargoId: original.cargoId,
         montoCentavos: -original.montoCentavos,

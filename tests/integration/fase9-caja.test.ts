@@ -481,12 +481,16 @@ describe("pagos, aplicaciones y los dos contadores", () => {
     await expect(
       conContexto({ clinicaId: clinica.clinicaId }, (cliente) =>
         cliente.query(
-          `INSERT INTO aplicaciones_pago (id, clinica_id, pago_id, cargo_id, monto_centavos,
+          // `paciente_id` va con el valor CORRECTO a propósito: si faltara, el
+           // INSERT moriría en el NOT NULL y esta prueba dejaría de probar la FK
+           // quíntuple, que es lo único que le interesa.
+          `INSERT INTO aplicaciones_pago (id, clinica_id, paciente_id, pago_id, cargo_id, monto_centavos,
              reversa_de_aplicacion_id, motivo_reversa, creada_por_id)
-           VALUES ($1, $2, $3, $4, $5, $6, 'reversa parcial ilegal', $7)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'reversa parcial ilegal', $8)`,
           [
             randomUUID(),
             clinica.clinicaId,
+            pacienteId,
             pagoId,
             cargoResinaId,
             -(aplicacionViva.montoCentavos - 100),
@@ -540,6 +544,59 @@ describe("pagos, aplicaciones y los dos contadores", () => {
     // El pago anulado ya no aporta crédito a favor.
     const final = (await getEstadoCuenta(ctx, pacienteId))!;
     expect(final.pagos.find((p) => p.id === pagoNuevo!.id)!.anuladoEn).not.toBeNull();
+  });
+});
+
+describe("un pago no cruza de paciente — hallazgos #1 de la auditoría del 21-sep-2026", () => {
+  it("aplicar el pago de un paciente al cargo de otro se rechaza con un mensaje legible", async () => {
+    const pagoDeUno = await registrarPago(ctx, {
+      pacienteId,
+      montoCentavos: 5000,
+      metodo: "EFECTIVO",
+      referencia: null,
+    });
+    const cuentaDelOtro = (await getEstadoCuenta(ctx, pacienteMultisesionId))!;
+    const cargoDelOtro = cuentaDelOtro.cargos.find((c) => c.anuladoEn === null)!;
+    expect(cargoDelOtro, "el otro paciente necesita un cargo vigente para esta prueba").toBeDefined();
+
+    await expect(
+      aplicarPago(ctx, {
+        pagoId: pagoDeUno!.id,
+        cargoId: cargoDelOtro.id,
+        montoCentavos: 100,
+      }),
+    ).rejects.toThrow(/pacientes distintos/i);
+  });
+
+  it("y aunque la aplicación se saltara esa guarda, la FK compuesta lo impide en la base", async () => {
+    const pagoDeUno = await registrarPago(ctx, {
+      pacienteId,
+      montoCentavos: 5000,
+      metodo: "EFECTIVO",
+      referencia: null,
+    });
+    const cuentaDelOtro = (await getEstadoCuenta(ctx, pacienteMultisesionId))!;
+    const cargoDelOtro = cuentaDelOtro.cargos.find((c) => c.anuladoEn === null)!;
+
+    // El INSERT dice que la aplicación es del paciente del cargo, pero apunta al
+    // pago del otro. Es exactamente la fila que antes entraba sin que nada
+    // chillara, y que dejaba las cinco reconciliaciones en cero.
+    await expect(
+      conContexto({ clinicaId: clinica.clinicaId }, (cliente) =>
+        cliente.query(
+          `INSERT INTO aplicaciones_pago (id, clinica_id, paciente_id, pago_id, cargo_id, monto_centavos, creada_por_id)
+           VALUES ($1, $2, $3, $4, $5, 100, $6)`,
+          [
+            randomUUID(),
+            clinica.clinicaId,
+            pacienteMultisesionId,
+            pagoDeUno!.id,
+            cargoDelOtro.id,
+            clinica.membresiaId,
+          ],
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "23503" });
   });
 });
 
