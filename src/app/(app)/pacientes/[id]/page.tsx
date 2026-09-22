@@ -7,9 +7,11 @@ import {
 } from "@/server/actions/alertas-medicas";
 import { requireCtx } from "@/server/auth/context";
 import { tienePermiso } from "@/server/auth/permissions";
+import { MapaBoca } from "@/components/pacientes/mapa-boca";
 import { listarAlertasMedicasActivas } from "@/server/db/alertas-medicas";
 import { listarCitasPaciente } from "@/server/db/citas";
 import { getPacienteAdministrativo, getPacienteDetalle } from "@/server/db/pacientes";
+import { getResumenBoca } from "@/server/db/resumen-boca";
 
 type PacientePageProps = {
   params: Promise<{ id: string }>;
@@ -56,10 +58,12 @@ export default async function PacienteExpedientePage({ params, searchParams }: P
   const puedeVerPii = tienePermiso(ctx.roles, "paciente:read_pii");
   const puedeLeerClinico = tienePermiso(ctx.roles, "clinico:read");
   const puedeEscribirClinico = tienePermiso(ctx.roles, "clinico:write");
-  const [citas, detallePii, alertas] = await Promise.all([
+  const [citas, detallePii, alertas, resumenBoca] = await Promise.all([
     listarCitasPaciente(ctx, id),
     puedeVerPii ? getPacienteDetalle(ctx, id) : Promise.resolve(null),
     puedeLeerClinico ? listarAlertasMedicasActivas(ctx, id) : Promise.resolve([]),
+    // Recepción y Caja no ven la boca del paciente: es dato clínico.
+    puedeLeerClinico ? getResumenBoca(ctx, id) : Promise.resolve(null),
   ]);
 
   return (
@@ -82,6 +86,7 @@ export default async function PacienteExpedientePage({ params, searchParams }: P
           <nav className="mt-5 flex flex-wrap gap-2 border-t pt-4 text-sm" aria-label="Secciones del expediente">
             <a href="#resumen" className="rounded-full bg-primary transition-colors hover:bg-rosa-hover px-3 py-1.5 font-medium text-primary-foreground">Resumen</a>
             <a href="#agenda" className="rounded-full border px-3 py-1.5 font-medium">Agenda</a>
+            {puedeLeerClinico ? <a href="#zonas" className="rounded-full border px-3 py-1.5 font-medium">Zonas trabajadas</a> : null}
             {puedeLeerClinico ? <a href="#alertas" className="rounded-full border px-3 py-1.5 font-medium">Alertas médicas</a> : null}
             {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/diagnosticos`} className="rounded-full border px-3 py-1.5 font-medium">Diagnósticos</Link> : null}
             {puedeLeerClinico ? <Link href={`/pacientes/${paciente.id}/odontograma`} className="rounded-full border px-3 py-1.5 font-medium">Odontograma</Link> : null}
@@ -116,6 +121,10 @@ export default async function PacienteExpedientePage({ params, searchParams }: P
             </dl>
           </article>
         </section>
+
+        {puedeLeerClinico && resumenBoca ? (
+          <MapaBoca pacienteId={id} resumen={resumenBoca} />
+        ) : null}
 
         {puedeLeerClinico ? (
           <section id="alertas" className="rounded-2xl border border-advertencia/30 bg-advertencia-suave p-5 shadow-sm">

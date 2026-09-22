@@ -23,6 +23,7 @@ import {
 } from "@/server/db/caja";
 import { clonarCatalogo, listarCatalogo } from "@/server/db/catalogo";
 import { crearPaciente } from "@/server/db/pacientes";
+import { getResumenBoca } from "@/server/db/resumen-boca";
 import { aceptarPlan, agregarPlanItem, crearPlan, presentarPlan } from "@/server/db/planes";
 import { realizarProcedimiento } from "@/server/db/procedimientos";
 
@@ -647,5 +648,55 @@ describe("reconciliación — la red del dinero", () => {
         conContexto({ clinicaId: clinica.clinicaId }, (cliente) => cliente.query(consulta)),
       ).rejects.toMatchObject({ code: "42501" });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// El vistazo de la boca en la ficha del paciente (Ciclo 28).
+//
+// Es una lectura agregada: no escribe nada y no interpreta nada. Lo que se
+// verifica acá es que diga la verdad sobre lo ya registrado — que una pieza con
+// procedimiento REALIZADO aparezca como tratada, que un presupuesto no cuente
+// como compromiso, y que no cruce clínicas.
+// ---------------------------------------------------------------------------
+describe("resumen de la boca para la ficha", () => {
+  it("una pieza con procedimiento realizado aparece tratada, con el nombre del tratamiento", async () => {
+    const resumen = (await getResumenBoca(ctx, pacienteId))!;
+    expect(resumen).not.toBeNull();
+
+    // La resina de la fase se realizó sobre el 26 oclusal.
+    const pieza26 = resumen.piezas.find((p) => p.fdi === 26);
+    expect(pieza26, "el 26 debería figurar: tuvo un procedimiento realizado").toBeDefined();
+    expect(pieza26!.tratada).toBe(true);
+    expect(pieza26!.tratamientosHechos.length).toBeGreaterThan(0);
+    expect(resumen.totalTratadas).toBeGreaterThan(0);
+  });
+
+  it("el conteo de tratadas coincide con las piezas marcadas como tratadas", async () => {
+    const resumen = (await getResumenBoca(ctx, pacienteId))!;
+    expect(resumen.totalTratadas).toBe(resumen.piezas.filter((p) => p.tratada).length);
+    expect(resumen.totalConHallazgo).toBe(
+      resumen.piezas.filter((p) => p.condiciones.length > 0).length,
+    );
+    // Una pieza ya tratada no se cuenta además como "aceptada sin realizar".
+    for (const pieza of resumen.piezas) {
+      if (pieza.tratada) expect(resumen.piezas.filter((p) => p.fdi === pieza.fdi)).toHaveLength(1);
+    }
+  });
+
+  it("no cruza clínicas: el paciente de otra clínica no existe acá", async () => {
+    const ctxOtraClinica: TenantContext = {
+      usuarioId: clinica.usuarioId,
+      clinicaId: randomUUID(),
+      membresiaId: clinica.membresiaId,
+      roles: ["ODONTOLOGO"],
+    };
+    expect(await getResumenBoca(ctxOtraClinica, pacienteId)).toBeNull();
+  });
+
+  it("exige permiso clínico: Caja no ve la boca del paciente", async () => {
+    await expect(
+      getResumenBoca({ ...ctx, roles: ["CAJA"] }, pacienteId),
+    ).rejects.toThrow(/permiso/i);
   });
 });
