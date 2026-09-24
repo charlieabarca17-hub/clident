@@ -57,7 +57,15 @@ export function usdEditable(centavos: number): string {
  * Vive acá porque toda conversión texto↔centavos es asunto de este archivo (ADR-009).
  */
 export function centavosDesdeTexto(texto: string): number | null {
-  const limpio = texto.trim().replace(/^\$\s*/, "").replaceAll(",", "");
+  const sinSimbolo = texto.trim().replace(/^\$\s*/, "");
+  // Una coma solo vale como separador de miles, agrupando de 3 en 3 ("1,234.56").
+  // Cualquier otra coma se rechaza: "12,50" es como se escribe $12.50 en buena
+  // parte de la región, y borrarla sin más lo volvía $1,250.00 — cien veces más,
+  // guardado en silencio. Un monto ambiguo se devuelve como inválido, nunca se adivina.
+  if (sinSimbolo.includes(",") && !/^\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?$/.test(sinSimbolo)) {
+    return null;
+  }
+  const limpio = sinSimbolo.replaceAll(",", "");
   const forma = /^(\d+)(?:\.(\d{1,2}))?$/.exec(limpio);
   if (!forma) return null;
 
