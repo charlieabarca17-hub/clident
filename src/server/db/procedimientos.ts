@@ -12,6 +12,7 @@ import type {
 } from "@/lib/validation/procedimientos";
 
 import { recalcularSuperficie } from "./odontograma";
+import { bloquearPlanItemParaCaja } from "./raw/bloquear-plan-item-caja";
 import { proyectarEstadoSuperficie } from "./raw/proyectar-estado-superficie";
 import { ErrorReglaClinica } from "@/lib/errors";
 import { conTenant, type TenantTransaction } from "./tenant";
@@ -102,6 +103,12 @@ export async function realizarProcedimiento(
 ) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // Primero el candado del PlanItem, igual que anular y que Caja: un solo orden
+    // de bloqueo (PlanItem → superficies) para que registrar y anular sesiones
+    // del mismo tratamiento no se esperen en orden inverso (deadlock, §13).
+    if (!(await bloquearPlanItemParaCaja(tx, { clinicaId: ctx.clinicaId, planItemId: input.planItemId }))) {
+      return null;
+    }
     const planItem = await tx.planItem.findFirst({
       where: { id: input.planItemId, clinicaId: ctx.clinicaId },
       select: {
@@ -345,7 +352,20 @@ export async function enmendarNotaClinica(
  * Anula el procedimiento: estado ANULADO + evento compensatorio en el
  * odontograma por cada evento que este procedimiento generó, con recálculo
  * de cada superficie (el mismo camino de CONDICION_ANULADA de la Fase 6).
- * Nunca delete. (El candado "no anular si ya está cobrado" llega con Caja.)
+ * Nunca delete.
+ *
+ * **Un procedimiento cobrado no se anula dejando el cobro sin tratamiento**
+ * (CLAUDE.md §9). Caja solo crea un cobro directo si el `PlanItem` tiene al
+ * menos una sesión realizada (`crearCargoDePlan`); esta función protege ese
+ * mismo invariante en la dirección contraria: con un cobro directo vigente, la
+ * última sesión realizada no se puede anular — primero Caja anula el cargo. Las
+ * sesiones anteriores sí, porque el cobro sigue teniendo un hecho detrás.
+ *
+ * Las cuotas NO bloquean: Caja las crea antes de cualquier sesión (§1.9), así
+ * que un calendario sin sesión realizada es un estado que el sistema ya admite.
+ *
+ * Se toma el mismo candado del `PlanItem` que usa Caja: sin él, Caja podría
+ * cobrar en el mismo instante en que se anula la única sesión.
  */
 export async function anularProcedimiento(
   ctx: TenantContext,
@@ -354,11 +374,44 @@ export async function anularProcedimiento(
 ) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    const candidato = await tx.procedimiento.findFirst({
+      where: { id: procedimientoId, clinicaId: ctx.clinicaId, estado: "REALIZADO" },
+      select: { planItemId: true },
+    });
+    if (!candidato) return null;
+    if (!(await bloquearPlanItemParaCaja(tx, { clinicaId: ctx.clinicaId, planItemId: candidato.planItemId }))) {
+      return null;
+    }
+
+    // Se relee DESPUÉS del candado: lo leído antes pudo cambiar mientras se esperaba.
     const procedimiento = await tx.procedimiento.findFirst({
       where: { id: procedimientoId, clinicaId: ctx.clinicaId, estado: "REALIZADO" },
-      select: { id: true, pacienteId: true },
+      select: {
+        id: true,
+        pacienteId: true,
+        cargoId: true,
+        planItem: {
+          select: {
+            cargos: { where: { anuladoEn: null, cuotaNumero: null }, select: { id: true }, take: 1 },
+            procedimientos: {
+              where: { estado: "REALIZADO", id: { not: procedimientoId } },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        },
+      },
     });
     if (!procedimiento) return null;
+
+    const reclamadoPorCargo = procedimiento.cargoId !== null;
+    const dejaCobroSinTratamiento =
+      procedimiento.planItem.cargos.length > 0 && procedimiento.planItem.procedimientos.length === 0;
+    if (reclamadoPorCargo || dejaCobroSinTratamiento) {
+      throw new ErrorReglaClinica(
+        "Este tratamiento tiene un cobro vigente en Caja y esta es su única sesión realizada: primero Caja debe anular el cargo.",
+      );
+    }
 
     const actualizado = await tx.procedimiento.update({
       where: { clinicaId_id: { clinicaId: ctx.clinicaId, id: procedimiento.id } },

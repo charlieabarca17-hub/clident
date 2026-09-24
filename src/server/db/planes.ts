@@ -16,6 +16,7 @@ import type {
   CrearPlanInput,
 } from "@/lib/validation/planes";
 
+import { bloquearPlanItemParaCaja } from "./raw/bloquear-plan-item-caja";
 import { conTenant, type TenantTransaction } from "./tenant";
 
 const SELECT_PLAN = {
@@ -361,13 +362,36 @@ async function transicionarItem(
 ) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // El mismo candado que toman Caja y los procedimientos: el estado que se
+    // lee acá no puede cambiar (ni nacer un cobro) antes de escribir el nuevo.
+    if (!(await bloquearPlanItemParaCaja(tx, { clinicaId: ctx.clinicaId, planItemId: itemId }))) {
+      return null;
+    }
     const item = await tx.planItem.findFirst({
       where: { id: itemId, clinicaId: ctx.clinicaId },
-      select: { id: true, estado: true, planId: true, plan: { select: { estado: true } } },
+      select: {
+        id: true,
+        estado: true,
+        planId: true,
+        plan: { select: { estado: true } },
+        procedimientos: { where: { estado: "REALIZADO" }, select: { id: true }, take: 1 },
+        cargos: { where: { anuladoEn: null }, select: { id: true }, take: 1 },
+      },
     });
     if (!item) return null;
     if (!puedeTransicionarItem(item.estado, hacia)) {
       throw new Error(`Un tratamiento ${item.estado} no puede pasar a ${hacia}.`);
+    }
+    // ANULADO afirma "esto nunca debió existir" (§4.5). Solo es cierto si no hay
+    // ningún hecho clínico detrás —ese se corrige anulando el procedimiento— ni
+    // un cobro vigente, que Caja tiene que anular primero.
+    if (hacia === "ANULADO" && item.procedimientos.length > 0) {
+      throw new Error(
+        "Este tratamiento tiene un procedimiento realizado: si estuvo mal, se anula el procedimiento, no el tratamiento.",
+      );
+    }
+    if (hacia === "ANULADO" && item.cargos.length > 0) {
+      throw new Error("Este tratamiento tiene un cobro vigente en Caja: primero Caja debe anularlo.");
     }
     // Coherencia §4.5: sin plan aceptado no hay progreso clínico de ítems.
     if (itemRequierePlanAceptado(hacia) && item.plan.estado !== "ACEPTADO") {

@@ -205,8 +205,8 @@ describe("caso 5 · las reglas clínicas del repositorio, TODAS", () => {
 
   const REGLAS = reglasDelCodigo();
 
-  it("hay 11 reglas clínicas y todas se extrajeron del código", () => {
-    expect(REGLAS).toHaveLength(11);
+  it("hay 12 reglas clínicas y todas se extrajeron del código", () => {
+    expect(REGLAS).toHaveLength(12);
   });
 
   it.each(REGLAS.map((r) => [r.mensaje]))("se le muestra al profesional tal cual: %s", (mensaje) => {

@@ -238,7 +238,7 @@ Lo mismo aplica hacia atrás: un reporte de ingresos del año pasado debe reflej
 |---|---|
 | El odontograma | Agrega un registro nuevo de anulación. **El original sigue ahí**, marcado como anulado, con el motivo. |
 | Una nota clínica | El autor la puede editar libremente por **12 horas**. Después, se guarda una **enmienda** que conserva el texto anterior, y la pantalla muestra "Nota enmendada el X por Y". |
-| Un procedimiento entero | Se **anula con motivo obligatorio** y se registra de nuevo. El anulado sigue visible. |
+| Un procedimiento entero | Se **anula con motivo obligatorio** y se registra de nuevo. El anulado sigue visible. **Si Caja ya cobró el tratamiento y es su única sesión realizada, primero se anula el cargo**: si no, quedaría un cobro por un tratamiento que en el expediente nunca ocurrió. |
 | Un cargo o un pago | Se anula con motivo. Nunca se borra. |
 
 **Por qué:** la diferencia entre corregir y ocultar es exactamente la diferencia entre un expediente confiable y uno adulterado. Un expediente que muestra "acá me equivoqué y así lo corregí" es **más** creíble ante un juez que uno impecable donde todo apareció perfecto a la primera.
@@ -415,6 +415,8 @@ O sea: a diferencia del dinero y del odontograma, **estas transiciones son una r
 **Si el tratamiento se hizo y estaba mal**, eso **no se arregla en el `PlanItem`**: se arregla donde está el hecho, **anulando el `Procedimiento`** con motivo (§3.2), lo que deja el anulado visible y genera su evento compensatorio en el odontograma.
 
 **`COMPLETADO` → `ANULADO` sí se permite**, y hace falta: **un tratamiento se puede marcar completado por error y no tener ningún procedimiento detrás.** La doctora tiene la lista del plan en pantalla y marca la fila de arriba — la corona en vez de la limpieza. No hay procedimiento de corona que anular. Sin esta transición, el ítem diría *"esta corona se completó"* **para siempre, sin salida**, y el expediente afirmaría un tratamiento que nunca ocurrió.
+
+**Cómo se garantiza:** anular un tratamiento se rechaza si tiene un procedimiento `REALIZADO` —el hecho se corrige anulando ese procedimiento— o un cobro vigente en Caja, que se anula primero. Lo hace el módulo de planes, con el mismo candado del tratamiento que usa Caja; la base no lo impide.
 
 Es el mismo argumento de `RECHAZADO` → `ANULADO`: **`CANCELADO` dice "se interrumpió"; `ANULADO` dice "esto nunca debió existir"**. Son cosas distintas, y a veces la segunda es la única cierta.
 
