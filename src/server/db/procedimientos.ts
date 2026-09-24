@@ -124,6 +124,9 @@ export async function realizarProcedimiento(
           select: { id: true },
           take: 1,
         },
+        // Cualquier sesión vigente, con o sin precio: es lo que decide si un
+        // tratamiento de una sola sesión ya se hizo.
+        _count: { select: { procedimientos: { where: { estado: "REALIZADO" } } } },
         plan: { select: { estado: true, pacienteId: true } },
         // Banderas del catálogo: comportamiento, NUNCA precio (ADR-006).
         tratamiento: {
@@ -146,7 +149,10 @@ export async function realizarProcedimiento(
     if (planItem.estado !== "ACEPTADO" && planItem.estado !== "EN_PROCESO") {
       throw new ErrorReglaClinica(`No se puede registrar una sesión sobre un tratamiento ${planItem.estado}.`);
     }
-    if (planItem.estado === "EN_PROCESO" && !planItem.tratamiento.permiteMultiplesSesiones) {
+    // Se mira si queda una sesión REALIZADA, no el estado del ítem: anular la
+    // única sesión deja el ítem EN_PROCESO, y REGLAS §3.4 manda registrarla de
+    // nuevo. Con la guarda por estado, el registro correcto quedaba bloqueado.
+    if (planItem._count.procedimientos > 0 && !planItem.tratamiento.permiteMultiplesSesiones) {
       throw new ErrorReglaClinica("Este tratamiento es de una sola sesión y ya tiene una registrada.");
     }
 

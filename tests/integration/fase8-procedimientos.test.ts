@@ -296,6 +296,36 @@ describe("anulación con eventos compensatorios", () => {
     expect(await anularProcedimiento(ctx, procedimiento.id, "Otra vez.")).toBeNull();
   });
 
+  it("anulada la única sesión, el tratamiento de una sola sesión se vuelve a registrar", async () => {
+    // REGLAS §3.4: un procedimiento equivocado "se anula y se registra de nuevo".
+    // La guarda de "una sola sesión" miraba el ESTADO del ítem (EN_PROCESO), que
+    // la anulación no toca, y rechazaba el registro correcto para siempre. Lo que
+    // cuenta es si queda alguna sesión REALIZADA, no en qué estado quedó el ítem.
+    const correcto = await realizarProcedimiento(ctx, {
+      pacienteId,
+      planItemId: itemResinaId,
+      realizadoEn: new Date(),
+      notasClinicas: "Registro correcto tras anular el equivocado.",
+      condicionResultante: "OBTURACION",
+      dientes: [{ fdi: 26, superficie: "OCLUSAL" }],
+    });
+    expect(correcto!.estado).toBe("REALIZADO");
+    // La sesión nueva vuelve a llevar el total acordado (ADR-017): la anterior se anuló.
+    expect(correcto!.precioAplicadoCentavos).toBe(4000);
+
+    // Y con esa sesión vigente, una tercera sigue rechazada.
+    await expect(
+      realizarProcedimiento(ctx, {
+        pacienteId,
+        planItemId: itemResinaId,
+        realizadoEn: new Date(),
+        notasClinicas: null,
+        condicionResultante: "OBTURACION",
+        dientes: [{ fdi: 26, superficie: "OCLUSAL" }],
+      }),
+    ).rejects.toThrow(/una sola sesión/i);
+  });
+
   it("el CHECK rechaza una anulación a medias", async () => {
     await expect(
       conContexto({ clinicaId: clinica.clinicaId }, async (cliente) => {
