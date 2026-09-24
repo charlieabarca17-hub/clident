@@ -16,6 +16,7 @@ import type {
   CrearPlanInput,
 } from "@/lib/validation/planes";
 
+import { bloquearPlan } from "./raw/bloquear-plan";
 import { conTenant, type TenantTransaction } from "./tenant";
 
 const SELECT_PLAN = {
@@ -102,6 +103,9 @@ export async function crearPlan(ctx: TenantContext, input: CrearPlanInput) {
 export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItemInput) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // Candado antes de leer el estado: si alguien presenta el plan en el mismo
+    // instante, uno de los dos espera y ve lo que el otro confirmó.
+    if (!(await bloquearPlan(tx, { clinicaId: ctx.clinicaId, planId: input.planId }))) return null;
     const plan = await tx.planTratamiento.findFirst({
       where: { id: input.planId, clinicaId: ctx.clinicaId },
       select: { id: true, estado: true },
@@ -219,6 +223,8 @@ export async function getPlan(ctx: TenantContext, planId: string) {
 export async function presentarPlan(ctx: TenantContext, planId: string) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // Mismo candado que agregarPlanItem: los cambios de un plan van en fila (§13).
+    if (!(await bloquearPlan(tx, { clinicaId: ctx.clinicaId, planId: planId }))) return null;
     const plan = await tx.planTratamiento.findFirst({
       where: { id: planId, clinicaId: ctx.clinicaId },
       select: { id: true, estado: true, items: { where: { estado: "PROPUESTO" }, select: { id: true } } },
@@ -250,6 +256,8 @@ export async function presentarPlan(ctx: TenantContext, planId: string) {
 export async function aceptarPlan(ctx: TenantContext, input: AceptarPlanInput) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // Mismo candado que agregarPlanItem: los cambios de un plan van en fila (§13).
+    if (!(await bloquearPlan(tx, { clinicaId: ctx.clinicaId, planId: input.planId }))) return null;
     const plan = await tx.planTratamiento.findFirst({
       where: { id: input.planId, clinicaId: ctx.clinicaId },
       select: { id: true, estado: true, items: { select: { id: true, estado: true } } },
@@ -289,6 +297,8 @@ export async function aceptarPlan(ctx: TenantContext, input: AceptarPlanInput) {
 export async function rechazarPlan(ctx: TenantContext, planId: string) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // Mismo candado que agregarPlanItem: los cambios de un plan van en fila (§13).
+    if (!(await bloquearPlan(tx, { clinicaId: ctx.clinicaId, planId: planId }))) return null;
     const plan = await tx.planTratamiento.findFirst({
       where: { id: planId, clinicaId: ctx.clinicaId },
       select: { id: true, estado: true },
@@ -313,6 +323,8 @@ export async function rechazarPlan(ctx: TenantContext, planId: string) {
 export async function anularPlan(ctx: TenantContext, planId: string, motivo: string) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // Mismo candado que agregarPlanItem: los cambios de un plan van en fila (§13).
+    if (!(await bloquearPlan(tx, { clinicaId: ctx.clinicaId, planId: planId }))) return null;
     const plan = await tx.planTratamiento.findFirst({
       where: { id: planId, clinicaId: ctx.clinicaId },
       select: { id: true, estado: true },
