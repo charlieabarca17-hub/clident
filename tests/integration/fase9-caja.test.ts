@@ -452,13 +452,26 @@ describe("pagos, aplicaciones y los dos contadores", () => {
   });
 
   it("sobreaplicar por el lado del pago truena en el SEGUNDO contador", async () => {
-    // Quedan $60 disponibles del pago; intentar aplicar $70 a una cuota de $60...
-    const cuenta = await getEstadoCuenta(ctx, pacienteId);
-    const cuota = cuenta!.cargos.find((c) => c.cuotaNumero === 2)!;
-    await rechaza(
-      aplicarPago(ctx, { pagoId, cargoId: cuota.id, montoCentavos: 6100 }),
-      "23514",
+    // Quedan $60 disponibles del pago. El cargo tiene que tener lugar de sobra:
+    // si no, también saltaría el CHECK del cargo y la prueba pasaría aunque el
+    // del pago no existiera. Por eso un cargo propio de $100 y $61 aplicados.
+    const holgado = await crearCargo(ctx, {
+      pacienteId,
+      descripcion: "Cargo con espacio de sobra",
+      fechaExigibleEn: hoyElSalvador(),
+      lineas: [{ procedimientoId: null, descripcion: "Consulta", precioOriginalCentavos: 10000, descuentoCentavos: 0 }],
+    });
+    let error: unknown;
+    try {
+      await aplicarPago(ctx, { pagoId, cargoId: holgado!.id, montoCentavos: 6100 });
+    } catch (e) {
+      error = e;
+    }
+    expect(violaRegla(error, "23514")).toBe(true);
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error ?? {})) + String(error)).toMatch(
+      /pago_no_sobreaplicado/,
     );
+    expect(String(error)).not.toMatch(/cargo_no_sobreaplicado/);
   });
 
   it("la reversa completa devuelve los contadores y el crédito", async () => {

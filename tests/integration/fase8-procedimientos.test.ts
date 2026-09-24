@@ -297,19 +297,20 @@ describe("anulación con eventos compensatorios", () => {
   });
 
   it("el CHECK rechaza una anulación a medias", async () => {
+    // Objetivo propio: antes la prueba buscaba "algún" REALIZADO y, si no había,
+    // salía por una rama SKIP que también contaba como éxito — nunca ejercía el CHECK.
+    const objetivo = await realizarProcedimiento(ctx, {
+      pacienteId,
+      planItemId: itemProfilaxisId,
+      realizadoEn: new Date(),
+      notasClinicas: null,
+      condicionResultante: null,
+      dientes: [],
+    });
     await expect(
-      conContexto({ clinicaId: clinica.clinicaId }, async (cliente) => {
-        const procedimiento = await cliente.query(
-          `SELECT id FROM procedimientos WHERE estado = 'REALIZADO' LIMIT 1`,
-        );
-        if (procedimiento.rows.length === 0) {
-          // Garantizar objetivo: la profilaxis todavía es realizable.
-          throw Object.assign(new Error("sin realizados"), { code: "SKIP" });
-        }
-        await cliente.query(`UPDATE procedimientos SET estado = 'ANULADO' WHERE id = $1`, [
-          procedimiento.rows[0].id,
-        ]);
-      }),
-    ).rejects.toMatchObject({ code: expect.stringMatching(/23514|SKIP/) });
+      conContexto({ clinicaId: clinica.clinicaId }, (cliente) =>
+        cliente.query(`UPDATE procedimientos SET estado = 'ANULADO' WHERE id = $1`, [objetivo!.id]),
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "procedimiento_estado_coherente" });
   });
 });

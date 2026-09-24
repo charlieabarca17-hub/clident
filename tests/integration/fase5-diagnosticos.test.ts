@@ -232,6 +232,16 @@ describe("anulación", () => {
       ),
     ).rejects.toMatchObject({ code: "42501" });
 
+    // El puente SÍ tiene DELETE (PUENTE_EDITABLE, ADR-012). PostgreSQL verifica el
+    // privilegio al planificar, aunque no haya filas: `WHERE false` prueba el
+    // permiso sin tocar datos que otras pruebas usan.
+    await expect(
+      conContexto({ clinicaId: clinicaA.clinicaId }, (cliente) =>
+        cliente.query("DELETE FROM diagnostico_dientes WHERE false"),
+      ),
+    ).resolves.toBeDefined();
+
+    // Y no tiene UPDATE: editar un diente del puente es borrar y volver a insertar.
     await expect(
       conContexto({ clinicaId: clinicaA.clinicaId }, (cliente) =>
         cliente.query("UPDATE diagnostico_dientes SET superficie = 'MESIAL'"),
