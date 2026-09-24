@@ -16,6 +16,7 @@ import type {
 import { aplicarMontoACargo } from "./raw/aplicar-monto-cargo";
 import { bloquearPlanItemParaCaja } from "./raw/bloquear-plan-item-caja";
 import { saldosDePaciente } from "./raw/saldos-paciente";
+import { FechaCivilSchema } from "@/lib/validation/citas";
 import { conTenant, type TenantTransaction } from "./tenant";
 
 const SELECT_CARGO = {
@@ -97,6 +98,12 @@ async function sucursalPredeterminada(tx: TenantTransaction, clinicaId: string):
 }
 
 function fechaCivilADate(fecha: string): Date {
+  // Defensa en profundidad: el esquema ya rechaza fechas imposibles, pero este
+  // repositorio se exporta y `new Date("2026-02-30")` es el 2 de marzo, en
+  // silencio. Un día que no existe no se convierte en otro: se rechaza.
+  if (!FechaCivilSchema.safeParse(fecha).success) {
+    throw new Error(`La fecha ${fecha} no existe en el calendario.`);
+  }
   // Mediodía UTC: el día civil no se corre en ningún huso razonable.
   return new Date(`${fecha}T12:00:00Z`);
 }

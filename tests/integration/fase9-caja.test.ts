@@ -398,6 +398,17 @@ describe("las 18 cuotas — criterio de salida", () => {
     expect(pendientes.some((p) => p.id === itemOrtodonciaId)).toBe(false);
   });
 
+  it("el repositorio no convierte un día inexistente en otro, aunque lo llamen sin el esquema", async () => {
+    await expect(
+      crearCargo(ctx, {
+        pacienteId,
+        descripcion: "Fecha imposible",
+        fechaExigibleEn: "2026-02-30",
+        lineas: [{ procedimientoId: null, descripcion: "Consulta", precioOriginalCentavos: 1000, descuentoCentavos: 0 }],
+      }),
+    ).rejects.toThrow(/no existe en el calendario/);
+  });
+
   it("una cuota con fecha absurda la rechaza el CHECK de rango", async () => {
     await rechaza(
       crearCargo(ctx, {
