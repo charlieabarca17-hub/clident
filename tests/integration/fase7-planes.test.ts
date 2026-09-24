@@ -538,3 +538,52 @@ describe("ciclo de vida del plan", () => {
     expect(SIN_DIENTES).toEqual([]);
   });
 });
+
+describe("agregar un tratamiento no se cruza con presentar el plan — auditoría del 23-sep-2026", () => {
+  it("agregar espera el candado del plan ANTES de tocar plan_items", async () => {
+    // Sin el candado, agregar leía BORRADOR, otra persona presentaba, y el ítem
+    // se insertaba igual: un plan presentado con un tratamiento que el paciente
+    // nunca vio. Esperar al final (por la FK) no alcanza: tiene que esperar antes.
+    const plan = await crearPlan(ctx, { pacienteId, titulo: "Carrera" });
+    const bloqueo = await migrator.connect();
+    try {
+      await bloqueo.query("BEGIN");
+      await bloqueo.query("SELECT id FROM planes WHERE id = $1 FOR UPDATE", [plan!.id]);
+      const pidBloqueo = (await bloqueo.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+      let termino = false;
+      const agregado = agregarPlanItem(ctx, {
+        planId: plan!.id,
+        tratamientoId: resinaId,
+        diagnosticoId: null,
+        precioAcordadoCentavos: 4500,
+        descuentoCentavos: 0,
+        dientes: [{ fdi: 17, superficie: "OCLUSAL" }],
+      }).finally(() => {
+        termino = true;
+      });
+      let bloqueadas: number[] = [];
+      for (let intento = 0; intento < 100 && bloqueadas.length === 0 && !termino; intento += 1) {
+        const { rows } = await migrator.query<{ pid: number }>(
+          "SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+          [pidBloqueo],
+        );
+        bloqueadas = rows.map((fila) => fila.pid);
+        if (bloqueadas.length === 0) await new Promise((resolver) => setTimeout(resolver, 100));
+      }
+      expect(bloqueadas.length).toBeGreaterThan(0);
+      const { rows: tocados } = await migrator.query<{ n: string }>(
+        "SELECT count(*) AS n FROM pg_locks WHERE pid = ANY($1) AND relation = 'plan_items'::regclass",
+        [bloqueadas],
+      );
+      expect(Number(tocados[0].n)).toBe(0);
+
+      // Mientras espera, el plan se presenta. Al soltarse, agregar ve PRESENTADO.
+      await bloqueo.query("UPDATE planes SET estado = 'PRESENTADO', presentado_en = now() WHERE id = $1", [plan!.id]);
+      await bloqueo.query("COMMIT");
+      await expect(agregado).rejects.toThrow(/borrador/i);
+      expect((await getPlan(ctx, plan!.id))!.items).toHaveLength(0);
+    } finally {
+      bloqueo.release();
+    }
+  });
+});
