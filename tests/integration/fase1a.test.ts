@@ -747,6 +747,26 @@ describe("paciente base", () => {
     expect(JSON.stringify(encontrados)).not.toContain(dui);
   });
 
+  it("sin read_pii, el DUI solo se busca completo: por fragmentos no se reconstruye", async () => {
+    // Recepción no ve el DUI (REGLAS §5.4). Si pudiera buscar "0123", "01234"…
+    // y mirar si el paciente sigue apareciendo, lo reconstruiría en menos de
+    // 100 consultas sin dejar rastro. Con el DUI completo —el que el paciente
+    // dicta en el mostrador— sí lo encuentra: eso no revela nada que no tenga.
+    const recepcionB: TenantContext = { ...contextoB(), roles: ["RECEPCION"] };
+    const porFragmento = await buscarPacientes(recepcionB, dui.slice(0, 5));
+    expect(porFragmento.some((p) => p.id === pacienteBId)).toBe(false);
+
+    const exacto = await buscarPacientes(recepcionB, dui);
+    expect(exacto.some((p) => p.id === pacienteBId)).toBe(true);
+    const sinGuion = await buscarPacientes(recepcionB, dui.replace("-", ""));
+    expect(sinGuion.some((p) => p.id === pacienteBId)).toBe(true);
+    expect(JSON.stringify(exacto)).not.toContain(dui);
+
+    // Quien sí tiene read_pii conserva la búsqueda parcial de siempre.
+    const conPii = await buscarPacientes(contextoB(), dui.slice(0, 5));
+    expect(conPii.some((p) => p.id === pacienteBId)).toBe(true);
+  });
+
   it("limita el DUI completo a paciente:read_pii y deja auditoría", async () => {
     await expect(getPacienteDetalle(contextoRecepcionA(), pacienteAId)).rejects.toThrow(
       "No tenés permiso para realizar esta acción.",
