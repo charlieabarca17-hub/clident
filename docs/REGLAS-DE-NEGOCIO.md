@@ -515,6 +515,8 @@ Superficies:  Mesial + Oclusal
 
 **Cómo se garantiza:** el enmascarado lo calcula la base de datos, y los listados **ni siquiera consultan el dato real**. No se puede filtrar lo que nunca se pidió.
 
+**Y tampoco se puede buscar por pedazos:** quien no ve el DUI completo solo puede buscar un paciente por el DUI **entero** (el que el paciente dicta en recepción). Si pudiera buscar por fragmentos, bastaría probar "0123", "01234"… y mirar si el paciente sigue apareciendo para reconstruir el número sin dejar rastro.
+
 ## 5.5 Un paciente menor de edad tiene un responsable
 
 **La regla:** todo paciente menor de 18 años debe tener registrado un **responsable**: nombre, documento, teléfono y parentesco. El sistema no deja crear el expediente de un menor sin él.
