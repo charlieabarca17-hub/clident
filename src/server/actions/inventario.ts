@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { centavosDesdeTexto } from "@/lib/money";
+import { centavosOpcionalesDesdeTexto } from "@/lib/money";
 import {
   ActualizarMaterialSchema,
   CrearMaterialSchema,
@@ -26,9 +26,10 @@ function entero(formData: FormData, nombre: string): number {
   return valor === "" ? Number.NaN : Number(valor);
 }
 
+// Vacío → sin costo; inválido → NaN, que el esquema rechaza. Antes un inválido
+// se volvía `null` y la edición borraba en silencio el costo guardado.
 function costo(formData: FormData): number | null {
-  const valor = texto(formData, "costo");
-  return valor ? centavosDesdeTexto(valor) : null;
+  return centavosOpcionalesDesdeTexto(texto(formData, "costo"));
 }
 
 export async function crearMaterialDesdeFormulario(formData: FormData): Promise<never> {

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { MAX_CENTAVOS, aplicarPorcentaje, centavosDesdeTexto, formatearUSD, usdEditable } from "@/lib/money";
+import {
+  MAX_CENTAVOS,
+  aplicarPorcentaje,
+  centavosDesdeTexto,
+  centavosOpcionalesDesdeTexto,
+  formatearUSD,
+  usdEditable,
+} from "@/lib/money";
 
 describe("formatearUSD", () => {
   it("formatea centavos como USD salvadoreño", () => {
@@ -73,6 +80,24 @@ describe("aplicarPorcentaje", () => {
   it("rechaza un porcentaje que no es número finito", () => {
     expect(() => aplicarPorcentaje(100, Number.NaN)).toThrow(/finito/);
     expect(() => aplicarPorcentaje(100, Number.POSITIVE_INFINITY)).toThrow(/finito/);
+  });
+});
+
+describe("centavosOpcionalesDesdeTexto", () => {
+  it("vacío es 'sin monto', no un error", () => {
+    expect(centavosOpcionalesDesdeTexto("")).toBeNull();
+    expect(centavosOpcionalesDesdeTexto("   ")).toBeNull();
+  });
+
+  it("cero es un monto, no la ausencia de uno", () => {
+    expect(centavosOpcionalesDesdeTexto("0")).toBe(0);
+    expect(centavosOpcionalesDesdeTexto("12.50")).toBe(1250);
+  });
+
+  it("un inválido NO se vuelve null: se marca para que el esquema lo rechace", () => {
+    for (const malo of ["abc", "5.", "12.345", "-3", "99999999"]) {
+      expect(centavosOpcionalesDesdeTexto(malo)).toBeNaN();
+    }
   });
 });
 
