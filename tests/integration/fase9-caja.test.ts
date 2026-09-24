@@ -24,7 +24,14 @@ import {
 import { clonarCatalogo, listarCatalogo } from "@/server/db/catalogo";
 import { crearPaciente } from "@/server/db/pacientes";
 import { getResumenBoca } from "@/server/db/resumen-boca";
-import { aceptarPlan, agregarPlanItem, crearPlan, presentarPlan } from "@/server/db/planes";
+import {
+  aceptarPlan,
+  agregarPlanItem,
+  anularPlanItem,
+  completarPlanItem,
+  crearPlan,
+  presentarPlan,
+} from "@/server/db/planes";
 import { anularProcedimiento, realizarProcedimiento } from "@/server/db/procedimientos";
 
 const appUrl = process.env.TEST_DATABASE_URL!;
@@ -879,5 +886,81 @@ describe("un procedimiento cobrado no se anula dejando el cobro sin tratamiento 
     const unica = await sesion(itemId);
     const anulado = await anularProcedimiento(ctx, unica, "Registro equivocado.");
     expect(anulado!.estado).toBe("ANULADO");
+  });
+});
+
+describe("ANULADO dice 'nunca existió': no se le aplica a un tratamiento con hechos o cobro — REGLAS §4.5", () => {
+  let pacienteItemsId: string;
+  let tratamientoMultiId: string;
+
+  async function itemAceptado(precioCentavos: number) {
+    const plan = await crearPlan(ctx, { pacienteId: pacienteItemsId, titulo: "Anular ítem" });
+    const conItem = await agregarPlanItem(ctx, {
+      planId: plan!.id,
+      tratamientoId: tratamientoMultiId,
+      diagnosticoId: null,
+      precioAcordadoCentavos: precioCentavos,
+      descuentoCentavos: 0,
+      dientes: [],
+    });
+    const itemId = conItem!.items[0].id;
+    await presentarPlan(ctx, plan!.id);
+    await aceptarPlan(ctx, { planId: plan!.id, itemIds: [itemId] });
+    return itemId;
+  }
+
+  beforeAll(async () => {
+    const tratamientos = (await listarCatalogo(ctx)).flatMap((c) => c.tratamientos);
+    tratamientoMultiId = tratamientos.find((t) => t.codigo === "ORT-02")!.id;
+    const paciente = await crearPaciente(
+      { ...ctx, roles: ["RECEPCION"] },
+      CrearPacienteSchema.parse({
+        nombres: "Paciente",
+        apellidos: "Ítems anulados",
+        fechaNacimiento: "1987-11-03",
+        dui: "",
+        telefono: "7400-0040",
+        correo: "",
+        direccion: "",
+        responsable: null,
+        contactoEmergencia: { nombre: "Contacto", telefono: "7400-0041" },
+      }),
+    );
+    pacienteItemsId = paciente.id;
+  });
+
+  it("un ítem con una sesión realizada no se anula: el hecho se corrige en el procedimiento", async () => {
+    const itemId = await itemAceptado(9000);
+    await realizarProcedimiento(ctx, {
+      pacienteId: pacienteItemsId,
+      planItemId: itemId,
+      realizadoEn: new Date(),
+      notasClinicas: null,
+      condicionResultante: null,
+      dientes: [],
+    });
+    await completarPlanItem(ctx, itemId);
+    await expect(anularPlanItem(ctx, itemId, "Nunca ocurrió.")).rejects.toThrow(/procedimiento realizado/i);
+    const { rows } = await migrator.query<{ estado: string }>("SELECT estado FROM plan_items WHERE id = $1", [itemId]);
+    expect(rows[0].estado).toBe("COMPLETADO");
+  });
+
+  it("un ítem con cobro vigente no se anula, aunque no tenga sesiones: primero Caja", async () => {
+    const itemId = await itemAceptado(12000);
+    await crearCalendarioCuotas(ctx, {
+      pacienteId: pacienteItemsId,
+      planItemId: itemId,
+      montoCuotaCentavos: 6000,
+      fechas: generarFechasCuotasMensuales(hoyElSalvador(), 2),
+    });
+    await completarPlanItem(ctx, itemId);
+    await expect(anularPlanItem(ctx, itemId, "Marcado por error.")).rejects.toThrow(/cobro vigente/i);
+  });
+
+  it("marcado completado por error, sin hechos ni cobro: se anula", async () => {
+    const itemId = await itemAceptado(3000);
+    await completarPlanItem(ctx, itemId);
+    const anulado = await anularPlanItem(ctx, itemId, "Se marcó la fila equivocada.");
+    expect(anulado!.items.find((i) => i.id === itemId)!.estado).toBe("ANULADO");
   });
 });

@@ -412,6 +412,8 @@ O sea: a diferencia del dinero y del odontograma, **estas transiciones son una r
 
 **`COMPLETADO` → `ANULADO` sí se permite**, y hace falta: **un tratamiento se puede marcar completado por error y no tener ningún procedimiento detrás.** La doctora tiene la lista del plan en pantalla y marca la fila de arriba — la corona en vez de la limpieza. No hay procedimiento de corona que anular. Sin esta transición, el ítem diría *"esta corona se completó"* **para siempre, sin salida**, y el expediente afirmaría un tratamiento que nunca ocurrió.
 
+**Cómo se garantiza:** anular un tratamiento se rechaza si tiene un procedimiento `REALIZADO` —el hecho se corrige anulando ese procedimiento— o un cobro vigente en Caja, que se anula primero. Lo hace el módulo de planes, con el mismo candado del tratamiento que usa Caja; la base no lo impide.
+
 Es el mismo argumento de `RECHAZADO` → `ANULADO`: **`CANCELADO` dice "se interrumpió"; `ANULADO` dice "esto nunca debió existir"**. Son cosas distintas, y a veces la segunda es la única cierta.
 
 `CANCELADO` y `ANULADO` son terminales.
