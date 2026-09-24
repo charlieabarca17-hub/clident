@@ -96,9 +96,10 @@ propietario; el cuarto se resolvió y se deja registrado para no volver a abrirl
 1. **Des-anular es posible a nivel de privilegios** (`procedimientos`, `cargos`,
    `pagos`). Un `CHECK` no ve el valor anterior y el proyecto no usa triggers.
    Mitigación implementada: la consulta de reconciliación #5 lo **detecta**
-   contra la auditoría append-only (ADR-016). **Detecta, no impide — y hoy solo
-   corre a mano** (`npm run reconciliar`): no está en la suite de integración
-   (`ARQUITECTURA.md` §13.4).
+   contra la auditoría append-only (ADR-016) — **pero solo para cargos y pagos**.
+   Un procedimiento des-anulado no lo detecta nada (`ARQUITECTURA.md` §10.5).
+   Corre a mano (`npm run reconciliar`) y también en la suite de integración
+   (`fase9-caja.test.ts`), que verifica que las consultas corran, no que detecten.
 2. **Las transiciones de estado las hace cumplir la aplicación**, no la base
    (pendiente #17). Están probadas, pero son *verificadas*, no *imposibles*.
 3. **`plan_item_dientes` permite borrar dientes de un plan ya aceptado**: el
