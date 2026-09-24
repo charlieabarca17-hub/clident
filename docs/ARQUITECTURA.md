@@ -69,7 +69,7 @@ clident/
 │  │  ├─ dto/                      # mappers DB → cliente (enmascarado)
 │  │  ├─ odontograma/  reducer.ts rebuild.ts
 │  │  ├─ operador/                 # flujos del operador — APLAZADO (ADR-011)
-│  │  └─ billing/dte/  types.ts noop-provider.ts   # seam DTE, sin implementación
+│  │  └─ billing/dte/  (previsto, NO creado: ver §12.7)   # seam DTE
 │  ├─ lib/
 │  │  ├─ validation/               # Zod, compartido
 │  │  └─ money.ts dui.ts dientes.ts errors.ts
@@ -185,7 +185,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE clident_migrator IN SCHEMA public
 | **PUENTE_EDITABLE** | `SELECT, INSERT, DELETE` (sin `UPDATE`) | `diagnostico_dientes`, `plan_item_dientes` — las únicas dos con `DELETE` legítimo: editar los dientes de un borrador es delete+insert |
 | **PROYECCION_DERIVADA** | `SELECT, INSERT, UPDATE, DELETE` | `estados_superficie` — derivada y regenerable; el rebuild y la anulación recalculada necesitan reescribirla |
 | **PARCIALMENTE_INMUTABLE** | `SELECT, INSERT` + `GRANT UPDATE (columnas mutables)` | `procedimientos` (§10.5), `cargos`, `pagos` (§12.5), **`plan_items` (§10.6)** |
-| **NORMAL** | `SELECT, INSERT, UPDATE` — **sin `DELETE`** | `pacientes`, `expedientes`, `citas`, `diagnosticos`, `planes`, `tratamientos`, `categorias_tratamiento`, `materiales`, `membresias`, `sucursales`, `clinicas`, `usuarios`, `contadores` |
+| **NORMAL** | `SELECT, INSERT, UPDATE` — **sin `DELETE`** | `pacientes`, `expedientes`, `citas`, `diagnosticos`, `planes`, `tratamientos`, `categorias_tratamiento`, `materiales`, `membresias`, `sucursales`, `clinicas`, `usuarios`, `preferencias_tratamiento`, `conexiones_google_calendar`, `sincronizaciones_cita_google` |
 
 **`DELETE` no se concede en ninguna parte salvo puentes y proyección.** Revisé todos los flujos documentados y ninguno lo necesita: las citas se cancelan, los planes se anulan, las membresías se desactivan, las sesiones son JWT sin tabla, y un `PlanItem` de un borrador pasa a `CANCELADO` en vez de borrarse.
 
@@ -221,7 +221,7 @@ GRANT UPDATE (estado, notas_clinicas, anulado_en, anulado_por_id,
 
 ## 4.2.4 La prueba estructural de privilegios
 
-Espejo de la prueba estructural de RLS. Un registro canónico en `tests/integration/estructura-privilegios.test.ts` con la clase de cada tabla, y aserciones contra el catálogo:
+Espejo de la prueba estructural de RLS. **Vive en `tests/integration/fase1a.test.ts`, bloque "estructura de seguridad"** (el archivo `estructura-privilegios.test.ts` que este párrafo prometía nunca se creó), con la clase de cada tabla y aserciones contra el catálogo:
 
 ```sql
 -- 1. Toda tabla de public debe estar clasificada. `_prisma_migrations` es de Prisma:
@@ -973,7 +973,9 @@ export interface ProveedorDte {
 }
 ```
 
-Todas las fases cablean `NoopDteProvider` (lanza `NO_IMPLEMENTADO`). Nada en Caja depende del proveedor concreto. `Cargo.documentoFiscalId` queda nulo. La tabla `DocumentoFiscal` se crea vacía en la Fase 9 solo para fijar la relación, sin lógica. **No se inventa lógica tributaria.**
+> **Estado real (auditoría del 23-sep-2026):** el seam `src/server/billing/dte/` y `NoopDteProvider` **no existen en el código**. Lo único construido es la tabla `documentos_fiscales` (vacía, APPEND_ONLY) y `Cargo.documentoFiscalId` (nula). El párrafo siguiente es el diseño, no lo que hay.
+
+**Diseño previsto (no construido):** todas las fases cablearían `NoopDteProvider` (lanza `NO_IMPLEMENTADO`). Nada en Caja depende del proveedor concreto. `Cargo.documentoFiscalId` queda nulo. La tabla `DocumentoFiscal` se crea vacía en la Fase 9 solo para fijar la relación, sin lógica. **No se inventa lógica tributaria.**
 
 ---
 

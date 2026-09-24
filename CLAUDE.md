@@ -219,6 +219,8 @@ REVOKE UPDATE ON procedimientos FROM clident_app;
 GRANT UPDATE (estado, notas_clinicas, anulado_en, anulado_por_id,
               motivo_anulacion, actualizado_en)
   ON procedimientos TO clident_app;
+-- Fase 9 agregó después, por separado: GRANT UPDATE (cargo_id) ON procedimientos.
+-- Si copiás este bloque, no lo pierdas: Caja lo necesita para liberar el reclamo.
 ```
 
 > **⚠ NUNCA escribas `REVOKE UPDATE (columna) ON tabla`.** No hace nada si el rol tiene `UPDATE` de tabla. Docs de PostgreSQL: *"if a role has been granted privileges on a table, then revoking the same privileges from individual columns will have no effect."* **Esa forma estuvo en este archivo hasta el Ciclo 1 y era decorativa.** El privilegio por columna solo restringe cuando es la **única** fuente. Y revocar de tabla borra también los grants por columna → el orden inverso los pierde en silencio.
@@ -309,7 +311,7 @@ El plan tiene fases numeradas (`docs/FLUJO-DE-DESARROLLO.md`). **Trabajás solo 
 
 - **No implementes "de paso"** algo de una fase posterior porque "ya que estamos".
 - **No agregues columnas, tablas ni módulos** que pertenecen a fases futuras.
-- **No implementes DTE.** Existe el seam (`src/server/billing/dte/types.ts`) y nada más. **No inventes lógica tributaria.**
+- **No implementes DTE.** Lo único que existe es la tabla vacía `documentos_fiscales` y la columna `Cargo.documentoFiscalId` (siempre nula). El seam `src/server/billing/dte/` que describe `ARQUITECTURA.md` **no se creó nunca**: no lo busques ni lo "completes". **No inventes lógica tributaria.**
 - **No integres consumo clínico con inventario** todavía.
 - **No agregues dependencias sin un ADR** y sin autorización. El stack cerrado son 8 piezas.
 - Si detectás que algo de una fase futura es necesario **ahora**, **pará y reportalo**. No lo implementes.
