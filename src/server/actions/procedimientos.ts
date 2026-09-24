@@ -9,6 +9,7 @@ import {
   EnmendarNotaSchema,
   RealizarProcedimientoSchema,
 } from "@/lib/validation/procedimientos";
+import { esErrorReglaClinica } from "@/lib/errors";
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso } from "@/server/auth/permissions";
 import {
@@ -136,11 +137,18 @@ export async function anularProcedimientoDesdeFormulario(formData: FormData): Pr
     procedimientoId: texto(formData, "procedimientoId"),
     motivoAnulacion: texto(formData, "motivoAnulacion"),
   });
-  const procedimiento = await anularProcedimiento(
-    ctx,
-    datos.procedimientoId,
-    datos.motivoAnulacion,
-  );
+  let procedimiento: Awaited<ReturnType<typeof anularProcedimiento>> = null;
+  let bloqueadoPorCobro = false;
+  try {
+    procedimiento = await anularProcedimiento(ctx, datos.procedimientoId, datos.motivoAnulacion);
+  } catch (error) {
+    // La única regla clínica de la anulación es la del cobro vigente (§9). Viaja
+    // como un código fijo, nunca como texto libre en la URL.
+    if (!esErrorReglaClinica(error)) throw error;
+    bloqueadoPorCobro = true;
+  }
   revalidatePath(ruta(pacienteId));
+  // Fuera del try: `redirect` lanza una señal interna de Next que un catch tragaría.
+  if (bloqueadoPorCobro) redirect(`${ruta(pacienteId)}?estado=cobrado`);
   redirect(procedimiento ? ruta(pacienteId) : `${ruta(pacienteId)}?estado=no-disponible`);
 }

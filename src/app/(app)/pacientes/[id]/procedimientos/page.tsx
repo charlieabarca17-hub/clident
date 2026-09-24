@@ -75,6 +75,12 @@ export default async function ProcedimientosPage({ params, searchParams }: Proce
             La operación no se pudo completar. Recargá la página y volvé a intentarlo.
           </p>
         ) : null}
+        {aviso === "cobrado" ? (
+          <p role="alert" className="rounded-lg border border-advertencia/40 bg-advertencia-suave px-3 py-2 text-sm text-foreground">
+            No se anuló: este tratamiento ya tiene un cobro vigente en Caja y esta es su única sesión
+            realizada. Pedile a Caja que anule el cargo primero; después podés anular el procedimiento.
+          </p>
+        ) : null}
 
         {puedeEscribir ? (
           <section className="rounded-2xl border bg-card p-5 shadow-sm">

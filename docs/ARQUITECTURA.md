@@ -650,7 +650,7 @@ ALTER TABLE procedimientos ADD CONSTRAINT procedimiento_estado_coherente CHECK (
 
 - **Sin borrado físico.** Solo `anularProcedimiento(ctx, id, motivo)` → `ANULADO` + auditoría + evento compensatorio.
 - **Ventana de gracia:** `notasClinicas` editable por su autor durante 12 h. Después, `EnmiendaProcedimiento` preserva el texto anterior.
-- Un procedimiento **cobrado** no se puede anular sin anular antes el cargo.
+- Un procedimiento **cobrado** no se puede anular sin anular antes el cargo. Como el cobro es por `PlanItem` (ADR-017), eso se traduce en: **con un cobro directo vigente, la última sesión `REALIZADO` del ítem no se anula** —es el mismo invariante que `crearCargoDePlan` exige al crear el cobro—, y tampoco un procedimiento con `cargoId`. Las sesiones anteriores sí se anulan. `anularProcedimiento` toma el candado del `PlanItem` que usa Caja, así que no puede cruzarse con un cobro simultáneo. **Las cuotas no bloquean**, porque Caja las crea antes de cualquier sesión: un calendario sin sesión realizada es un estado que el sistema ya admite a propósito (§1.9 de `REGLAS-DE-NEGOCIO.md`).
 
 ---
 

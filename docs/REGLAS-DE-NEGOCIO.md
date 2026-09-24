@@ -234,7 +234,7 @@ Lo mismo aplica hacia atrás: un reporte de ingresos del año pasado debe reflej
 |---|---|
 | El odontograma | Agrega un registro nuevo de anulación. **El original sigue ahí**, marcado como anulado, con el motivo. |
 | Una nota clínica | El autor la puede editar libremente por **12 horas**. Después, se guarda una **enmienda** que conserva el texto anterior, y la pantalla muestra "Nota enmendada el X por Y". |
-| Un procedimiento entero | Se **anula con motivo obligatorio** y se registra de nuevo. El anulado sigue visible. |
+| Un procedimiento entero | Se **anula con motivo obligatorio** y se registra de nuevo. El anulado sigue visible. **Si Caja ya cobró el tratamiento y es su única sesión realizada, primero se anula el cargo**: si no, quedaría un cobro por un tratamiento que en el expediente nunca ocurrió. |
 | Un cargo o un pago | Se anula con motivo. Nunca se borra. |
 
 **Por qué:** la diferencia entre corregir y ocultar es exactamente la diferencia entre un expediente confiable y uno adulterado. Un expediente que muestra "acá me equivoqué y así lo corregí" es **más** creíble ante un juez que uno impecable donde todo apareció perfecto a la primera.

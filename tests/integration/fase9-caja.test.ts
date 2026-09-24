@@ -25,7 +25,7 @@ import { clonarCatalogo, listarCatalogo } from "@/server/db/catalogo";
 import { crearPaciente } from "@/server/db/pacientes";
 import { getResumenBoca } from "@/server/db/resumen-boca";
 import { aceptarPlan, agregarPlanItem, crearPlan, presentarPlan } from "@/server/db/planes";
-import { realizarProcedimiento } from "@/server/db/procedimientos";
+import { anularProcedimiento, realizarProcedimiento } from "@/server/db/procedimientos";
 
 const appUrl = process.env.TEST_DATABASE_URL!;
 const migrationUrl = process.env.TEST_MIGRATION_DATABASE_URL!;
@@ -698,5 +698,186 @@ describe("resumen de la boca para la ficha", () => {
     await expect(
       getResumenBoca({ ...ctx, roles: ["CAJA"] }, pacienteId),
     ).rejects.toThrow(/permiso/i);
+  });
+});
+
+describe("un procedimiento cobrado no se anula dejando el cobro sin tratamiento — CLAUDE.md §9", () => {
+  // Paciente propio: estas pruebas anulan procedimientos y cargos, y no deben
+  // mover nada de lo que el resto del archivo da por sentado.
+  let pacienteAnulacionId: string;
+  let tratamientoMultiId: string;
+
+  async function planAceptado(precioCentavos: number) {
+    const plan = await crearPlan(ctx, { pacienteId: pacienteAnulacionId, titulo: "Anulación" });
+    const conItem = await agregarPlanItem(ctx, {
+      planId: plan!.id,
+      tratamientoId: tratamientoMultiId,
+      diagnosticoId: null,
+      precioAcordadoCentavos: precioCentavos,
+      descuentoCentavos: 0,
+      dientes: [],
+    });
+    const itemId = conItem!.items[0].id;
+    await presentarPlan(ctx, plan!.id);
+    await aceptarPlan(ctx, { planId: plan!.id, itemIds: [itemId] });
+    return itemId;
+  }
+
+  async function sesion(planItemId: string) {
+    const creada = await realizarProcedimiento(ctx, {
+      pacienteId: pacienteAnulacionId,
+      planItemId,
+      realizadoEn: new Date(),
+      notasClinicas: null,
+      condicionResultante: null,
+      dientes: [],
+    });
+    return creada!.id;
+  }
+
+  beforeAll(async () => {
+    const tratamientos = (await listarCatalogo(ctx)).flatMap((c) => c.tratamientos);
+    tratamientoMultiId = tratamientos.find((t) => t.codigo === "ORT-02")!.id;
+    const paciente = await crearPaciente(
+      { ...ctx, roles: ["RECEPCION"] },
+      CrearPacienteSchema.parse({
+        nombres: "Paciente",
+        apellidos: "Anulación",
+        fechaNacimiento: "1990-01-15",
+        dui: "",
+        telefono: "7400-0030",
+        correo: "",
+        direccion: "",
+        responsable: null,
+        contactoEmergencia: { nombre: "Contacto", telefono: "7400-0031" },
+      }),
+    );
+    pacienteAnulacionId = paciente.id;
+  });
+
+  it("con cobro directo vigente, la única sesión realizada no se puede anular", async () => {
+    const itemId = await planAceptado(5000);
+    const unica = await sesion(itemId);
+    const cargo = await crearCargoDePlan(ctx, {
+      pacienteId: pacienteAnulacionId,
+      planItemId: itemId,
+      fechaExigibleEn: hoyElSalvador(),
+    });
+
+    await expect(anularProcedimiento(ctx, unica, "Pieza equivocada.")).rejects.toThrow(/cobro vigente/i);
+    const { rows } = await migrator.query<{ estado: string }>(
+      "SELECT estado FROM procedimientos WHERE plan_item_id = $1",
+      [itemId],
+    );
+    expect(rows.map((r) => r.estado)).toEqual(["REALIZADO"]);
+
+    // El orden correcto: primero Caja anula el cargo, después se anula el hecho.
+    await anularCargo(ctx, cargo!.id, "Se cobró un tratamiento mal registrado.");
+    const anulado = await anularProcedimiento(ctx, unica, "Pieza equivocada.");
+    expect(anulado!.estado).toBe("ANULADO");
+  });
+
+  it("con varias sesiones se puede anular una, pero nunca la última que sostiene el cobro", async () => {
+    const itemId = await planAceptado(15000);
+    const primera = await sesion(itemId);
+    const segunda = await sesion(itemId);
+    await crearCargoDePlan(ctx, {
+      pacienteId: pacienteAnulacionId,
+      planItemId: itemId,
+      fechaExigibleEn: hoyElSalvador(),
+    });
+
+    // Anular la primera deja la segunda realizada: el cobro sigue teniendo tratamiento.
+    const anulada = await anularProcedimiento(ctx, primera, "Sesión duplicada.");
+    expect(anulada!.estado).toBe("ANULADO");
+    await expect(anularProcedimiento(ctx, segunda, "Tampoco.")).rejects.toThrow(/cobro vigente/i);
+  });
+
+  it("anular espera el candado del tratamiento: no se cruza con un cobro simultáneo", async () => {
+    // Otra conexión retiene el MISMO candado que toma Caja al cobrar. Si
+    // anularProcedimiento no lo pidiera, terminaría sin esperar y podría
+    // intercalarse con crearCargoDePlan: cobro creado + única sesión anulada.
+    const itemId = await planAceptado(2000);
+    const unica = await sesion(itemId);
+    const bloqueo = await migrator.connect();
+    try {
+      await bloqueo.query("BEGIN");
+      await bloqueo.query("SELECT id FROM plan_items WHERE id = $1 FOR UPDATE", [itemId]);
+      const pidBloqueo = (await bloqueo.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+      let termino = false;
+      const anulacion = anularProcedimiento(ctx, unica, "Registro equivocado.").finally(() => {
+        termino = true;
+      });
+      // No se mide un reloj (la latencia de la red lo vuelve inútil): se le
+      // pregunta a PostgreSQL si alguna sesión está BLOQUEADA por la que retiene
+      // el candado. Sin el candado, la anulación termina sin que eso ocurra nunca.
+      let esperando = false;
+      for (let intento = 0; intento < 100 && !esperando && !termino; intento += 1) {
+        const { rows } = await migrator.query<{ n: string }>(
+          "SELECT count(*) AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+          [pidBloqueo],
+        );
+        esperando = Number(rows[0].n) > 0;
+        if (!esperando) await new Promise((resolver) => setTimeout(resolver, 100));
+      }
+      expect(esperando).toBe(true);
+      expect(termino).toBe(false);
+      await bloqueo.query("COMMIT");
+      expect((await anulacion)!.estado).toBe("ANULADO");
+    } finally {
+      bloqueo.release();
+    }
+  });
+
+  it("registrar una sesión también espera el candado: un solo orden de bloqueo", async () => {
+    // Sin este candado, registrar y anular sesiones del mismo tratamiento se
+    // bloquean en orden inverso (superficies → ítem contra ítem → superficies),
+    // y una anulación de ítem podría no ver una sesión que está naciendo.
+    const itemId = await planAceptado(2500);
+    const bloqueo = await migrator.connect();
+    try {
+      await bloqueo.query("BEGIN");
+      await bloqueo.query("SELECT id FROM plan_items WHERE id = $1 FOR UPDATE", [itemId]);
+      const pidBloqueo = (await bloqueo.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+      let termino = false;
+      const registro = sesion(itemId).finally(() => {
+        termino = true;
+      });
+      let esperando = false;
+      for (let intento = 0; intento < 100 && !esperando && !termino; intento += 1) {
+        const { rows } = await migrator.query<{ n: string }>(
+          "SELECT count(*) AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+          [pidBloqueo],
+        );
+        esperando = Number(rows[0].n) > 0;
+        if (!esperando) await new Promise((resolver) => setTimeout(resolver, 100));
+      }
+      expect(esperando).toBe(true);
+      // Esperar no alcanza: sin el candado, la sesión igual terminaría esperando,
+      // pero DESPUÉS de insertar el procedimiento (el FK y el cambio de estado del
+      // ítem chocan con la misma fila). Con el candado, espera ANTES de tocar nada:
+      // todavía no tiene ningún candado sobre `procedimientos`.
+      const bloqueadas = await migrator.query<{ pid: number }>(
+        "SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+        [pidBloqueo],
+      );
+      const { rows: tocados } = await migrator.query<{ n: string }>(
+        "SELECT count(*) AS n FROM pg_locks WHERE pid = ANY($1) AND relation = 'procedimientos'::regclass",
+        [bloqueadas.rows.map((fila) => fila.pid)],
+      );
+      expect(Number(tocados[0].n)).toBe(0);
+      expect(termino).toBe(false);
+      await bloqueo.query("COMMIT");
+      expect(await registro).toBeTruthy();
+    } finally {
+      bloqueo.release();
+    }
+  });
+
+  it("sin cobro, anular sigue siendo libre", async () => {
+    const itemId = await planAceptado(3000);
+    const unica = await sesion(itemId);
+    const anulado = await anularProcedimiento(ctx, unica, "Registro equivocado.");
+    expect(anulado!.estado).toBe("ANULADO");
   });
 });
