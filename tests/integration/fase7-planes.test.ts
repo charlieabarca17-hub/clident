@@ -6,7 +6,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CrearPacienteSchema } from "@/lib/validation/pacientes";
 import type { TenantContext } from "@/server/auth/types";
 import { db } from "@/server/db/client";
-import { actualizarTratamiento, clonarCatalogo, listarCatalogo } from "@/server/db/catalogo";
+import {
+  actualizarTratamiento,
+  clonarCatalogo,
+  crearTratamiento,
+  listarCatalogo,
+} from "@/server/db/catalogo";
 import { crearDiagnostico } from "@/server/db/diagnosticos";
 import { crearPaciente } from "@/server/db/pacientes";
 import {
@@ -154,6 +159,7 @@ describe("precio congelado (ADR-006)", () => {
     await actualizarTratamiento(ctx, resinaId, {
       nombre: "Restauración con resina compuesta premium",
       activo: true,
+      precioHabitualCentavos: null,
     });
 
     const relegido = await getPlan(ctx, plan!.id);
@@ -178,6 +184,173 @@ describe("precio congelado (ADR-006)", () => {
         cliente.query("DELETE FROM plan_items"),
       ),
     ).rejects.toMatchObject({ code: "42501" });
+  });
+});
+
+describe("precio habitual y tarifa preferencial (ADR-020)", () => {
+  // Un tratamiento propio, para no pelear con el resto del archivo por la
+  // tarifa de la resina.
+  const plantilla = {
+    categoriaNombre: "Personalizados",
+    nombre: "Profilaxis con tarifa",
+    alcance: "BOCA" as const,
+    requiereDiente: false,
+    permiteMultiplesDientes: false,
+    permiteSuperficies: false,
+    permiteMultiplesSuperficies: false,
+    requiereDiagnostico: false,
+    permiteMultiplesSesiones: false,
+  };
+  let conTarifaId: string;
+  let sinTarifaId: string;
+
+  beforeAll(async () => {
+    conTarifaId = (
+      await crearTratamiento(ctx, { ...plantilla, codigo: "PREF-01", precioHabitualCentavos: 5000 })
+    ).id;
+    sinTarifaId = (
+      await crearTratamiento(ctx, { ...plantilla, codigo: "PREF-02", precioHabitualCentavos: null })
+    ).id;
+  });
+
+  it("el ítem guarda la tarifa habitual del momento y la diferencia contra lo acordado", async () => {
+    const plan = await crearPlan(ctx, { pacienteId, titulo: "Preferencial" });
+    const conItem = await agregarPlanItem(ctx, {
+      planId: plan!.id,
+      tratamientoId: conTarifaId,
+      diagnosticoId: null,
+      // El odontólogo cobra por debajo de lo habitual: $40 contra $50.
+      precioAcordadoCentavos: 4000,
+      descuentoCentavos: 0,
+      dientes: SIN_DIENTES,
+    });
+    const item = conItem!.items[0];
+    expect(item.precioUnitarioCentavos).toBe(4000);
+    expect(item.precioHabitualCentavos).toBe(5000);
+    expect(item.preferencialCentavos).toBe(1000);
+  });
+
+  it("subir la tarifa del catálogo NO cambia lo que ya se registró como preferencial", async () => {
+    const plan = await crearPlan(ctx, { pacienteId, titulo: "Tarifa que sube" });
+    const conItem = await agregarPlanItem(ctx, {
+      planId: plan!.id,
+      tratamientoId: conTarifaId,
+      diagnosticoId: null,
+      precioAcordadoCentavos: 4000,
+      descuentoCentavos: 0,
+      dientes: SIN_DIENTES,
+    });
+    expect(conItem!.items[0].preferencialCentavos).toBe(1000);
+
+    // La clínica actualiza su tarifa: de $50 a $90.
+    await actualizarTratamiento(ctx, conTarifaId, {
+      nombre: plantilla.nombre,
+      activo: true,
+      precioHabitualCentavos: 9000,
+    });
+
+    // El plan de enero sigue diciendo lo que decía en enero. Si esto falla, en
+    // algún lado se está leyendo el catálogo de hoy en vez del snapshot.
+    const relegido = await getPlan(ctx, plan!.id);
+    expect(relegido!.items[0].precioHabitualCentavos).toBe(5000);
+    expect(relegido!.items[0].preferencialCentavos).toBe(1000);
+
+    // Un ítem nuevo sí toma la tarifa nueva: el snapshot es por ítem.
+    const conSegundo = await agregarPlanItem(ctx, {
+      planId: plan!.id,
+      tratamientoId: conTarifaId,
+      diagnosticoId: null,
+      precioAcordadoCentavos: 4000,
+      descuentoCentavos: 0,
+      dientes: SIN_DIENTES,
+    });
+    const nuevo = conSegundo!.items.find((i) => i.precioHabitualCentavos === 9000);
+    expect(nuevo?.preferencialCentavos).toBe(5000);
+  });
+
+  it("vaciar la tarifa del catálogo tampoco borra el snapshot del plan", async () => {
+    // Tratamiento propio: no depende de a cuánto dejó la tarifa la prueba anterior.
+    const propioId = (
+      await crearTratamiento(ctx, { ...plantilla, codigo: "PREF-03", precioHabitualCentavos: 9000 })
+    ).id;
+    const plan = await crearPlan(ctx, { pacienteId, titulo: "Tarifa que desaparece" });
+    await agregarPlanItem(ctx, {
+      planId: plan!.id,
+      tratamientoId: propioId,
+      diagnosticoId: null,
+      precioAcordadoCentavos: 4000,
+      descuentoCentavos: 0,
+      dientes: SIN_DIENTES,
+    });
+    await actualizarTratamiento(ctx, propioId, {
+      nombre: plantilla.nombre,
+      activo: true,
+      precioHabitualCentavos: null,
+    });
+    const relegido = await getPlan(ctx, plan!.id);
+    expect(relegido!.items[0].precioHabitualCentavos).toBe(9000);
+    expect(relegido!.items[0].preferencialCentavos).toBe(5000);
+  });
+
+  it("un tratamiento sin tarifa deja el preferencial en null, no en cero", async () => {
+    const plan = await crearPlan(ctx, { pacienteId, titulo: "Sin tarifa" });
+    const conItem = await agregarPlanItem(ctx, {
+      planId: plan!.id,
+      tratamientoId: sinTarifaId,
+      diagnosticoId: null,
+      precioAcordadoCentavos: 4000,
+      descuentoCentavos: 0,
+      dientes: SIN_DIENTES,
+    });
+    expect(conItem!.items[0].precioHabitualCentavos).toBeNull();
+    expect(conItem!.items[0].preferencialCentavos).toBeNull();
+  });
+
+  it("cobrar por encima de lo habitual no registra un preferencial negativo", async () => {
+    // Tiene que haber tarifa: con un tratamiento sin habitual el resultado sería
+    // `null` por otra razón y esta prueba no podría fallar.
+    const caroId = (
+      await crearTratamiento(ctx, { ...plantilla, codigo: "PREF-04", precioHabitualCentavos: 5000 })
+    ).id;
+    const plan = await crearPlan(ctx, { pacienteId, titulo: "Por encima" });
+    const conItem = await agregarPlanItem(ctx, {
+      planId: plan!.id,
+      tratamientoId: caroId,
+      diagnosticoId: null,
+      precioAcordadoCentavos: 12000,
+      descuentoCentavos: 0,
+      dientes: SIN_DIENTES,
+    });
+    expect(conItem!.items[0].precioHabitualCentavos).toBe(5000);
+    expect(conItem!.items[0].preferencialCentavos).toBe(0);
+  });
+
+  it("el snapshot del ítem nace inmutable: ni un UPDATE directo lo toca", async () => {
+    // `plan_items` tiene REVOKE UPDATE de tabla y GRANT solo sobre (estado,
+    // actualizado_en). La columna nueva nunca se agregó a ese GRANT, así que
+    // PostgreSQL la defiende sola. Si esto deja de fallar, alguien amplió el
+    // GRANT y el histórico dejó de ser histórico.
+    await expect(
+      conContexto({ clinicaId: clinica.clinicaId }, (cliente) =>
+        cliente.query("UPDATE plan_items SET precio_habitual_centavos = 1"),
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+  });
+
+  it("la base rechaza un snapshot negativo", async () => {
+    await expect(
+      conContexto({ clinicaId: clinica.clinicaId }, (cliente) =>
+        cliente.query(
+          `INSERT INTO plan_items (id, clinica_id, plan_id, tratamiento_id, tratamiento_codigo,
+             tratamiento_nombre, precio_unitario_centavos, precio_habitual_centavos,
+             descuento_centavos, estado, creado_por_id, actualizado_en)
+           SELECT gen_random_uuid()::text, clinica_id, plan_id, tratamiento_id, tratamiento_codigo,
+             tratamiento_nombre, precio_unitario_centavos, -1, descuento_centavos, estado,
+             creado_por_id, CURRENT_TIMESTAMP
+           FROM plan_items LIMIT 1`,
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
   });
 });
 

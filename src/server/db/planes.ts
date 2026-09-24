@@ -35,6 +35,7 @@ const SELECT_PLAN = {
       tratamientoCodigo: true,
       tratamientoNombre: true,
       precioUnitarioCentavos: true,
+      precioHabitualCentavos: true,
       descuentoCentavos: true,
       estado: true,
       diagnosticoId: true,
@@ -124,6 +125,10 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
         permiteSuperficies: true,
         permiteMultiplesSuperficies: true,
         requiereDiagnostico: true,
+        // Se lee acá, no del payload: si el habitual viajara en el request, un
+        // cliente podría mentir sobre cuánto era lo normal y con eso falsear
+        // cuánto se dio en tarifa preferencial (ADR-020).
+        precioHabitualCentavos: true,
       },
     });
     if (!tratamiento) {
@@ -169,6 +174,10 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
         tratamientoCodigo: tratamiento.codigo,
         tratamientoNombre: tratamiento.nombre,
         precioUnitarioCentavos: input.precioAcordadoCentavos,
+        // Snapshot de lo que era habitual HOY. Si la clínica sube su tarifa en
+        // marzo, lo que se registró como preferencial en enero no cambia
+        // (ADR-020). Por eso se copia y no se consulta después con un join.
+        precioHabitualCentavos: tratamiento.precioHabitualCentavos,
         descuentoCentavos: input.descuentoCentavos,
         creadoPorId: ctx.membresiaId,
       },

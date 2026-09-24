@@ -1,6 +1,6 @@
 # ADR-018 — El catálogo no contiene precios
 
-- **Estado:** Aceptado
+- **Estado:** Aceptado — **superseded parcialmente por ADR-020** (22-sep-2026): la clínica vuelve a tener una tarifa habitual propia. Sigue vigente de este ADR: nada de precios en las plantillas de plataforma y ningún precio que el sistema imponga.
 - **Fecha de la decisión:** 2026-07-19 · **Documentado:** 2026-07-23
 - **Ciclo:** implementado fuera de ciclo (PR #19) · registrado en el Ciclo 24
 - **Decidido por:** Carlos

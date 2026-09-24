@@ -1,6 +1,6 @@
 # ADR-006 — Snapshot histórico de tratamientos y precios
 
-- **Estado:** Aceptado — superseded parcialmente por ADR-017 (el origen del monto) y por ADR-018 (el catálogo ya no tiene precios)
+- **Estado:** Aceptado — superseded parcialmente por ADR-017 (el origen del monto) y por ADR-018 (el catálogo ya no tiene precios); ADR-020 devolvió una tarifa habitual por clínica, y con ella la prohibición del join
 - **Fecha:** 2026-07-17
 - **Ciclo:** 0
 
@@ -46,6 +46,13 @@ model PlanItem {
 > plenamente vigente de este ADR es todo lo demás**: los snapshots de nombre y
 > código, la cascada a `Procedimiento` y `LineaCargo`, y la prohibición de
 > "normalizar" los campos copiados.
+
+> **Actualización, ADR-020 (22-sep-2026):** el catálogo vuelve a tener una
+> columna de precio, `Tratamiento.precioHabitualCentavos`, que es la tarifa de
+> la clínica y solo se precarga. **El join vuelve a ser posible, así que la
+> prohibición de arriba vuelve a regir tal cual**, y se extiende: la tarifa
+> preferencial se calcula contra el snapshot `PlanItem.precioHabitualCentavos`,
+> nunca contra el catálogo de hoy.
 
 El mismo patrón aplica en cascada: `Procedimiento.precioAplicadoCentavos` y `LineaCargo.precioUnitarioCentavos` también son snapshots. Un procedimiento ya cobrado no cambia de precio porque cambie el plan ni el catálogo.
 

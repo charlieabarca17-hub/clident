@@ -188,15 +188,19 @@ Además, **la base de datos obliga al orden correcto**: un cargo con dinero apli
 
 ## 2.1 Los precios de un plan no cambian nunca
 
-**La regla:** el catálogo **no tiene precios**. Cuando se agrega un tratamiento al plan, el odontólogo escribe el precio que acordó con ese paciente. Ese monto queda guardado y **no cambia nunca**. Ni siquiera mientras el plan está en borrador.
+**La regla:** cuando se agrega un tratamiento al plan, el odontólogo escribe el precio que acordó con ese paciente. Ese monto queda guardado y **no cambia nunca**. Ni siquiera mientras el plan está en borrador.
 
-**Por qué el catálogo no tiene precios:** porque un precio guardado ahí se convertiría en el número que el sistema propone solo, y lo que se propone solo es lo que la gente acepta sin pensar. Como el precio se acuerda paciente por paciente, el sistema no tiene ninguno que proponer (ADR-018).
+**El catálogo sí guarda una tarifa habitual, y es de la clínica** (ADR-020). Sirve para dos cosas: que el precio venga ya escrito en el formulario —y no haya que teclear el mismo número cien veces— y que después se pueda responder *"cuánto cobré, cuánto era lo normal y cuánto di en tarifa preferencial"*. **No es un precio que CLIDENT imponga:** lo pone la clínica, el campo es editable y lo que el odontólogo escriba manda siempre.
+
+**El riesgo de eso, dicho de frente:** un número que aparece solo es un número que se acepta sin pensar. La decisión fue aceptar ese riesgo a cambio de la velocidad, con los ojos abiertos. Si algún día resulta que todos los precios acordados son idénticos al habitual, es señal de que nadie los está pensando y hay que revisar la precarga.
+
+**Y la tarifa habitual de hoy no reescribe el pasado:** el plan guarda, junto al precio acordado, **la tarifa que era habitual ese día**. Si la clínica sube su tarifa en marzo, lo que se registró como preferencial en enero sigue diciendo lo mismo.
 
 **Por qué:** un plan es un compromiso con un paciente. Si en marzo le presupuestaste una corona a $300 y en junio la clínica sube el precio a $380, ese paciente presupuestó $300. Si el sistema recalculara automáticamente, el paciente vería un número distinto al que se le dijo, y la clínica no tendría forma de demostrar qué se le ofreció ni cuándo. En términos legales: destruiría la prueba de la oferta.
 
 Lo mismo aplica hacia atrás: un reporte de ingresos del año pasado debe reflejar los precios de entonces, no los de hoy.
 
-**Cómo se garantiza:** el plan guarda su propio precio y **ya no mira el catálogo**. No es que se evite consultarlo: es que el precio del plan está en otro lado.
+**Cómo se garantiza:** el catálogo se lee **una sola vez**, al agregar el tratamiento al plan: de ahí salen el precio precargado, el nombre, el código y la tarifa habitual de ese día. Después el plan **ya no mira el catálogo**. No es que se evite consultarlo: es que todo lo que el plan necesita ya está copiado adentro.
 
 ## 2.2 El precio es por el tratamiento completo, no por sesión
 

@@ -121,9 +121,9 @@ PACIENTE → EXPEDIENTE → ODONTOGRAMA → DIAGNÓSTICO → PLAN DE TRATAMIENTO
 
 ## 7. Precios históricos (snapshots)
 
-> **El catálogo no tiene precios** (ADR-018). `Tratamiento` describe el tratamiento; no lo cotiza. El único precio del sistema lo escribe el odontólogo en `PlanItem.precioUnitarioCentavos` al armar el plan de ese paciente, y ahí queda inmutable.
+> **El catálogo guarda UNA tarifa de referencia y nada más** (ADR-020). `Tratamiento.precioHabitualCentavos` es el precio habitual **de esa clínica**: se precarga en el formulario del plan por comodidad y **el odontólogo lo puede cambiar antes de guardar**. El precio que vale es el que él escribe en `PlanItem.precioUnitarioCentavos`, y ahí queda inmutable (ADR-017).
 
-**Cualquier consulta que haga join de `PlanItem` (o `Procedimiento`, o `LineaCargo`) a `Tratamiento` para mostrar o calcular un precio es un bug** — hoy ni siquiera compila, porque no hay columna de precio que leer. Esa es la idea.
+**Cualquier consulta que haga join de `PlanItem` (o `Procedimiento`, o `LineaCargo`) a `Tratamiento` para mostrar o calcular un precio es un bug.** Vale igual para el precio habitual: el plan lleva su propio `precioHabitualCentavos` como **snapshot**, y la tarifa preferencial se calcula contra ese snapshot, nunca contra el catálogo de hoy. Si la clínica sube su tarifa en marzo, lo que se registró como preferencial en enero no puede cambiar.
 
 - No existe "precio de catálogo": editar un `Tratamiento` **no puede** alterar un plan existente — **ni siquiera uno en `BORRADOR`**.
 - También se congelan `tratamientoNombre` y `tratamientoCodigo`: renombrar "Resina" → "Restauración con resina" no debe reescribir la historia.
@@ -132,7 +132,9 @@ PACIENTE → EXPEDIENTE → ODONTOGRAMA → DIAGNÓSTICO → PLAN DE TRATAMIENTO
 
 **Advertencia para agentes:** vas a ver `tratamientoNombre` duplicado en `PlanItem` y te va a dar ganas de "normalizarlo" con un join. **Eso es exactamente el bug.** Los campos snapshot son deliberados. No los toques.
 
-**Segunda advertencia:** vas a notar que el catálogo no tiene precio y te va a parecer que falta algo. **No falta: se quitó a propósito** (ADR-018). Un precio en el catálogo se convierte en el valor por defecto del formulario, y ese default es justo lo que anula el precio acordado por paciente del ADR-017. No lo devuelvas.
+**Segunda advertencia:** vas a ver `precioHabitualCentavos` duplicado en `Tratamiento` y en `PlanItem` y te va a dar ganas de quitar el del plan. **Es el mismo bug otra vez.** El del catálogo es la tarifa de hoy —editable—; el del plan es la de aquel día —congelada—. Borrar el segundo hace que el histórico se reescriba solo cada vez que la clínica ajusta su tarifa.
+
+**Tercera advertencia:** el ADR-018 había quitado los precios del catálogo y decía que no se devolvieran. **El ADR-020 revisó esa decisión con un argumento nuevo** (registrar cuánto se cobró contra cuánto era lo normal) y la cambió en parte. Lo que sigue prohibido: precios en las **plantillas de plataforma**, un precio que el sistema imponga, y cualquier cálculo de preferencial que lea el catálogo en vez del snapshot. La precarga es una sugerencia de la clínica a sí misma — **si alguna vez se vuelve un número que nadie piensa, la línea a revisar es esa** (ADR-020, "Alternativas descartadas").
 
 ---
 

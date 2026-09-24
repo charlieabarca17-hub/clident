@@ -25,6 +25,7 @@ function selectTratamiento(membresiaId: string) {
     codigo: true,
     nombre: true,
     activo: true,
+    precioHabitualCentavos: true,
     alcance: true,
     requiereDiente: true,
     permiteMultiplesDientes: true,
@@ -354,6 +355,7 @@ export async function crearTratamiento(ctx: TenantContext, input: CrearTratamien
         permiteMultiplesSuperficies: input.permiteMultiplesSuperficies,
         requiereDiagnostico: input.requiereDiagnostico,
         permiteMultiplesSesiones: input.permiteMultiplesSesiones,
+        precioHabitualCentavos: input.precioHabitualCentavos,
       },
       select: selectTratamiento(ctx.membresiaId),
     });
@@ -375,7 +377,7 @@ export async function actualizarTratamiento(
   return conTenant(ctx, async (tx) => {
     const existente = await tx.tratamiento.findFirst({
       where: { id, clinicaId: ctx.clinicaId },
-      select: { id: true, nombre: true, activo: true },
+      select: { id: true, nombre: true, activo: true, precioHabitualCentavos: true },
     });
     if (!existente) return null;
 
@@ -384,6 +386,9 @@ export async function actualizarTratamiento(
       data: {
         nombre: input.nombre,
         activo: input.activo,
+        // Editar el precio habitual NO toca ningún plan existente: cada plan
+        // guarda su propio snapshot (ADR-020, ADR-006).
+        precioHabitualCentavos: input.precioHabitualCentavos,
       },
       select: selectTratamiento(ctx.membresiaId),
     });

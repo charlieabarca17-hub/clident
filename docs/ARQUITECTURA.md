@@ -677,6 +677,7 @@ GRANT UPDATE (estado, actualizado_en) ON plan_items TO clident_app;
 |---|---|---|
 | `precioUnitarioCentavos`, `descuentoCentavos` | **INMUTABLE** | **es dinero, y es la prueba de la oferta** (ADR-006) |
 | `tratamientoNombre`, `tratamientoCodigo`, `tratamientoId` | **INMUTABLE** | snapshots (ADR-006) |
+| `precioHabitualCentavos` | **INMUTABLE** | snapshot de la tarifa habitual de ese día; de él sale la tarifa preferencial (ADR-020) |
 | `planId`, `clinicaId`, `diagnosticoId` | **INMUTABLE** | mover un ítem a otro plan reescribe lo que el paciente aceptó |
 | `creadoEn`, `creadoPorId` | **INMUTABLE** | procedencia |
 | `estado` | **MUTABLE** | las transiciones de `REGLAS-DE-NEGOCIO.md` §4.5 |
@@ -769,9 +770,11 @@ Un índice parcial permite como máximo un cargo directo vigente por `PlanItem`;
 
 ## 12.2 Snapshots (ADR-006)
 
-**El catálogo no almacena precios (ADR-018).** `Tratamiento` describe el tratamiento —alcance, dientes, superficies, sesiones—; el monto nace cuando el odontólogo crea el `PlanItem` para un paciente concreto. La fuente de verdad es `PlanItem.precioUnitarioCentavos` y queda inmutable.
+**El catálogo guarda la tarifa habitual de la clínica, no el precio del paciente (ADR-020).** `Tratamiento.precioHabitualCentavos` (`Int?`, de la clínica, nunca de plataforma) se precarga en el formulario del plan; el monto que vale nace cuando el odontólogo crea el `PlanItem`. La fuente de verdad es `PlanItem.precioUnitarioCentavos` y queda inmutable.
 
-**Cualquier join de `PlanItem`/`Procedimiento`/`LineaCargo` a `Tratamiento` para obtener un precio es un bug**, y desde el ADR-018 es además imposible: no hay columna que leer. Editar el catálogo nunca altera un plan existente, **ni siquiera en `BORRADOR`**. También se congelan nombre y código.
+**Cualquier join de `PlanItem`/`Procedimiento`/`LineaCargo` a `Tratamiento` para obtener un precio es un bug.** Editar el catálogo nunca altera un plan existente, **ni siquiera en `BORRADOR`**. Se congelan nombre, código, precio acordado y **también la tarifa habitual del momento**: `PlanItem.precioHabitualCentavos` es un snapshot, y la **tarifa preferencial** —`precioHabitual − precioUnitario`, cuando el habitual existe y es mayor— se deriva de él. No es una columna: un tercer número guardado podría desalinearse de los otros dos.
+
+> El preferencial responde *"cuánto se cobró por debajo de lo normal **ese día**"*. Calcularlo contra el catálogo actual haría que los números del pasado cambiaran solos cada vez que la clínica ajusta su tarifa. `descuentoCentavos` es **otra cosa**: una rebaja sobre el precio ya acordado, dentro del mismo plan. Un plan puede tener las dos y no se suman.
 
 ## 12.3 Dinero: centavos enteros (ADR-009)
 

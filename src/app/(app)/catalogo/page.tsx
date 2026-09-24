@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BookOpen, Plus, Search, Star } from "lucide-react";
 
+import { formatearUSD } from "@/lib/money";
 import { agregarReferenciaDesdeFormulario } from "@/server/actions/catalogo";
 import { requireCtx } from "@/server/auth/context";
 import { tienePermiso } from "@/server/auth/permissions";
@@ -31,8 +32,9 @@ export default async function CatalogoPage({ searchParams }: CatalogoPageProps) 
             </p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Catálogo de tratamientos</h1>
             <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-              Elegí únicamente lo que ofrece tu clínica y nombralo como lo conoce tu equipo. Los precios
-              se deciden para cada paciente al preparar su plan, nunca aquí.
+              Elegí únicamente lo que ofrece tu clínica y nombralo como lo conoce tu equipo. El precio
+              habitual de acá es tu tarifa: se precarga al armar un plan y el odontólogo la puede
+              cambiar para cada paciente antes de guardar.
             </p>
           </div>
           {puedeEscribir ? (
@@ -55,7 +57,7 @@ export default async function CatalogoPage({ searchParams }: CatalogoPageProps) 
                 </p>
               </div>
               <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
-                Sin precios predefinidos
+                Tarifa propia, editable en cada plan
               </span>
             </header>
 
@@ -65,7 +67,8 @@ export default async function CatalogoPage({ searchParams }: CatalogoPageProps) 
                 <h3 className="mt-4 font-semibold">Tu catálogo comienza vacío</h3>
                 <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
                   Usá la referencia odontológica para agregar tratamientos uno por uno o creá uno
-                  personalizado. CLIDENT no impondrá nombres comerciales ni tarifas.
+                  personalizado. CLIDENT no impone nombres comerciales ni tarifas: la tarifa habitual
+                  la ponés vos, y sigue siendo editable en cada plan.
                 </p>
               </div>
             ) : (
@@ -82,6 +85,7 @@ export default async function CatalogoPage({ searchParams }: CatalogoPageProps) 
                             <th className="px-5 py-3 font-medium">Código</th>
                             <th className="px-5 py-3 font-medium">Nombre en la clínica</th>
                             <th className="px-5 py-3 font-medium">Alcance</th>
+                            <th className="px-5 py-3 text-right font-medium">Precio habitual</th>
                             <th className="px-5 py-3 font-medium">Estado</th>
                             <th className="px-5 py-3 text-right font-medium">Acción</th>
                           </tr>
@@ -102,6 +106,13 @@ export default async function CatalogoPage({ searchParams }: CatalogoPageProps) 
                                 ) : null}
                               </td>
                               <td className="px-5 py-3">{ETIQUETA_ALCANCE[tratamiento.alcance]}</td>
+                              <td className="px-5 py-3 text-right font-mono">
+                                {tratamiento.precioHabitualCentavos === null ? (
+                                  <span className="font-sans text-xs text-muted-foreground">Sin tarifa</span>
+                                ) : (
+                                  formatearUSD(tratamiento.precioHabitualCentavos)
+                                )}
+                              </td>
                               <td className="px-5 py-3">
                                 <span className={tratamiento.activo ? "rounded-full bg-exito-suave px-2.5 py-1 text-xs font-medium text-exito-texto" : "rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"}>
                                   {tratamiento.activo ? "Disponible" : "Inactivo"}

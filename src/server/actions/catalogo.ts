@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { centavosDesdeTexto } from "@/lib/money";
 import {
   AgregarReferenciaCatalogoSchema,
   ActualizarTratamientoSchema,
@@ -24,6 +25,21 @@ function texto(formData: FormData, nombre: string): string {
 
 function bandera(formData: FormData, nombre: string): boolean {
   return formData.get(nombre) === "on";
+}
+
+/**
+ * El precio habitual del formulario, en centavos (ADR-020).
+ *
+ * Campo vacío → `null`: el tratamiento no tiene precio habitual, que es un
+ * estado legítimo. Texto que no es un monto → `NaN`, para que el esquema lo
+ * rechace con un mensaje. **Devolver `null` ahí sería borrarle en silencio el
+ * precio a la clínica por un dedazo**, que es justo lo que no puede pasar con
+ * un campo de dinero.
+ */
+function precioHabitualCentavos(formData: FormData): number | null {
+  const valor = texto(formData, "precioHabitual");
+  if (valor === "") return null;
+  return centavosDesdeTexto(valor) ?? Number.NaN;
 }
 
 export async function agregarReferenciaDesdeFormulario(formData: FormData): Promise<void> {
@@ -48,6 +64,7 @@ export async function crearTratamientoDesdeFormulario(formData: FormData): Promi
     permiteMultiplesSuperficies: bandera(formData, "permiteMultiplesSuperficies"),
     requiereDiagnostico: bandera(formData, "requiereDiagnostico"),
     permiteMultiplesSesiones: bandera(formData, "permiteMultiplesSesiones"),
+    precioHabitualCentavos: precioHabitualCentavos(formData),
   });
   await crearTratamiento(ctx, datos);
   revalidatePath("/catalogo");
@@ -63,6 +80,7 @@ export async function actualizarTratamientoDesdeFormulario(
   const datos = ActualizarTratamientoSchema.parse({
     nombre: texto(formData, "nombre"),
     activo: bandera(formData, "activo"),
+    precioHabitualCentavos: precioHabitualCentavos(formData),
   });
   const tratamiento = await actualizarTratamiento(ctx, tratamientoId, datos);
   if (!tratamiento) {

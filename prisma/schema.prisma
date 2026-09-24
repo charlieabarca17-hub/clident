@@ -475,9 +475,10 @@ model CategoriaTratamiento {
   @@map("categorias_tratamiento")
 }
 
-// Catálogo compartido de la clínica. No guarda precios: el odontólogo define el
-// total acordado al preparar cada plan. Puede partir de una referencia global o
-// ser un tratamiento personalizado de la clínica.
+// Catálogo compartido de la clínica. Guarda como mucho la tarifa habitual DE LA
+// CLÍNICA (ADR-020), que solo se precarga: el odontólogo define el total acordado
+// al preparar cada plan. Puede partir de una referencia global o ser un
+// tratamiento personalizado de la clínica.
 model Tratamiento {
   id                          String             @id @default(cuid())
   clinicaId                   String             @map("clinica_id")
@@ -485,6 +486,10 @@ model Tratamiento {
   codigo                      String
   nombre                      String
   plantillaCodigo             String?            @map("plantilla_codigo")
+  // ADR-020: precio habitual DE ESTA CLÍNICA. Nullable: un tratamiento puede no
+  // tenerlo todavía y eso no bloquea nada. Se precarga al armar un plan, pero el
+  // precio que manda sigue siendo el que escribe el odontólogo (ADR-017).
+  precioHabitualCentavos Int?      @map("precio_habitual_centavos")
   activo                      Boolean            @default(true)
   alcance                     AlcanceTratamiento
   requiereDiente              Boolean            @map("requiere_diente")
@@ -939,6 +944,11 @@ model PlanItem {
   tratamientoCodigo      String         @map("tratamiento_codigo")
   tratamientoNombre      String         @map("tratamiento_nombre")
   precioUnitarioCentavos Int            @map("precio_unitario_centavos")
+  // Snapshot de lo que era habitual CUANDO SE ARMÓ ESTE PLAN (ADR-020). Es lo
+  // que hace que "cuánto se dio en preferencial" no cambie cuando la clínica
+  // actualiza su tarifa. Calcular el preferencial con un join a `Tratamiento`
+  // es el bug que este campo existe para impedir — igual que en el ADR-006.
+  precioHabitualCentavos Int?           @map("precio_habitual_centavos")
   descuentoCentavos      Int            @default(0) @map("descuento_centavos")
   estado                 EstadoPlanItem @default(PROPUESTO)
   creadoPorId            String         @map("creado_por_id")

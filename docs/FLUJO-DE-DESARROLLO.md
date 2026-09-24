@@ -124,6 +124,7 @@ Antes de reportar, releé tu diff y respondé cada una:
 **Dinero**
 - [ ] ¿Todo monto es `Int` en centavos y termina en `Centavos`?
 - [ ] ¿Hay algún join a `Tratamiento` para obtener un precio de algo ya creado? **(bug)**
+- [ ] ¿La tarifa preferencial se calcula contra el catálogo de hoy en vez del snapshot `PlanItem.precioHabitualCentavos`? **(bug — ADR-020)**
 - [ ] ¿El precio del catálogo se impone al paciente en vez de ser solo una referencia? **(bug: el odontólogo fija el precio del `PlanItem`)**
 - [ ] ¿Un tratamiento multisesión puede generar un cargo por sesión? **(bug: se cobra una vez por `PlanItem`)**
 - [ ] ¿La suma de cuotas difiere del total acordado? **(bug)**
