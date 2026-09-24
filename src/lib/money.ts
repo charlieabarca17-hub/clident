@@ -77,6 +77,21 @@ export function centavosDesdeTexto(texto: string): number | null {
 }
 
 /**
+ * Para un campo de dinero **opcional**: distingue los tres estados que un
+ * `valor ? convertir(valor) : null` confunde.
+ *
+ * - vacío → `null`: "no hay monto", un estado legítimo;
+ * - monto válido → sus centavos (incluido `0`, que es un monto);
+ * - cualquier otra cosa → `NaN`, para que el esquema Zod lo **rechace** con un
+ *   mensaje. Devolver `null` ahí borraría en silencio un monto guardado por un
+ *   dedazo: exactamente lo que le pasaba al costo de inventario.
+ */
+export function centavosOpcionalesDesdeTexto(texto: string): number | null {
+  if (texto.trim() === "") return null;
+  return centavosDesdeTexto(texto) ?? Number.NaN;
+}
+
+/**
  * Aplica un porcentaje a un monto en centavos y devuelve centavos enteros.
  *
  * **Es el único lugar del proyecto donde se decide un redondeo de dinero.** Existe
