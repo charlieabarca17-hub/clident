@@ -1,26 +1,47 @@
 import Link from "next/link";
 
 import { DuiInput } from "@/components/pacientes/dui-input";
+import { VOLVER_A_AGENDA } from "@/lib/agenda";
+import { FechaCivilSchema } from "@/lib/validation/citas";
 import { crearPacienteDesdeFormulario } from "@/server/actions/pacientes";
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso } from "@/server/auth/permissions";
 
-export default async function NuevoPacientePage() {
+type NuevoPacienteSearchParams = Promise<{ volver?: string; fecha?: string }>;
+
+export default async function NuevoPacientePage({ searchParams }: { searchParams: NuevoPacienteSearchParams }) {
   const ctx = await requireCtx();
   requirePermiso(ctx, "paciente:write");
+  const parametros = await searchParams;
+  // ¿Se abrió desde "Nueva cita"? Entonces al guardar se vuelve a la cita, y
+  // cancelar también regresa ahí, no al listado de pacientes.
+  const desdeAgenda = parametros.volver === VOLVER_A_AGENDA;
+  const fecha = FechaCivilSchema.safeParse(parametros.fecha).success ? parametros.fecha! : "";
+  const rutaVolver = desdeAgenda ? `/agenda/nueva${fecha ? `?fecha=${fecha}` : ""}` : "/pacientes";
 
   return (
     <main className="min-h-full bg-background p-5 sm:p-8">
       <section className="mx-auto max-w-3xl">
         <header className="mb-6 flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">CLIDENT · Pacientes</p>
+            <p className="text-sm font-medium text-muted-foreground">
+              {desdeAgenda ? "CLIDENT · Agenda · Nueva cita" : "CLIDENT · Pacientes"}
+            </p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">Nuevo paciente</h1>
+            {desdeAgenda ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Al guardar volvés a la cita con este paciente ya elegido.
+              </p>
+            ) : null}
           </div>
-          <Link href="/pacientes" className="rounded-lg border bg-card px-3 py-2 text-sm">Volver a pacientes</Link>
+          <Link href={rutaVolver} className="rounded-lg border bg-card px-3 py-2 text-sm">
+            {desdeAgenda ? "Volver a la cita" : "Volver a pacientes"}
+          </Link>
         </header>
 
         <form action={crearPacienteDesdeFormulario} className="space-y-6 rounded-2xl border bg-card p-5 shadow-sm">
+          {desdeAgenda ? <input type="hidden" name="volver" value={VOLVER_A_AGENDA} /> : null}
+          {desdeAgenda && fecha ? <input type="hidden" name="fecha" value={fecha} /> : null}
           <section className="space-y-4">
             <div>
               <h2 className="font-semibold">Datos del paciente</h2>
@@ -96,8 +117,10 @@ export default async function NuevoPacientePage() {
           </section>
 
           <div className="flex justify-end gap-3 border-t pt-5">
-            <Link href="/pacientes" className="rounded-lg border px-4 py-2 text-sm font-medium">Cancelar</Link>
-            <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Crear paciente</button>
+            <Link href={rutaVolver} className="rounded-lg border px-4 py-2 text-sm font-medium">Cancelar</Link>
+            <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">
+              {desdeAgenda ? "Crear paciente y seguir con la cita" : "Crear paciente"}
+            </button>
           </div>
         </form>
       </section>
