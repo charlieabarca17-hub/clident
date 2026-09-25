@@ -17,6 +17,7 @@ type PlanItemDb = {
 
 type PlanDb = {
   id: string;
+  pacienteId: string;
   titulo: string | null;
   estado: EstadoPlan;
   presentadoEn: Date | null;
@@ -59,6 +60,7 @@ export type PlanItemDto = ReturnType<typeof toPlanItemDto>;
 export function toPlanDto(plan: PlanDb) {
   return {
     id: plan.id,
+    pacienteId: plan.pacienteId,
     titulo: plan.titulo,
     estado: plan.estado,
     presentadoEn: plan.presentadoEn?.toISOString() ?? null,

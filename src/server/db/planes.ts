@@ -22,6 +22,7 @@ import { conTenant, type TenantTransaction } from "./tenant";
 
 const SELECT_PLAN = {
   id: true,
+  pacienteId: true,
   titulo: true,
   estado: true,
   presentadoEn: true,
@@ -110,7 +111,7 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
     if (!(await bloquearPlan(tx, { clinicaId: ctx.clinicaId, planId: input.planId }))) return null;
     const plan = await tx.planTratamiento.findFirst({
       where: { id: input.planId, clinicaId: ctx.clinicaId },
-      select: { id: true, estado: true },
+      select: { id: true, estado: true, pacienteId: true },
     });
     if (!plan) return null;
     if (plan.estado !== "BORRADOR") {
@@ -144,8 +145,16 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
       throw new Error(`«${tratamiento.nombre}» exige un diagnóstico vinculado.`);
     }
     if (input.diagnosticoId) {
+      // Del MISMO paciente del plan, no solo de la clínica: la FK de
+      // `plan_items` todavía no incluye al paciente, así que esta guarda es la
+      // única capa (auditoría del 23-sep-2026, mismo patrón que d374a2f).
       const diagnostico = await tx.diagnostico.findFirst({
-        where: { id: input.diagnosticoId, clinicaId: ctx.clinicaId, anuladoEn: null },
+        where: {
+          id: input.diagnosticoId,
+          clinicaId: ctx.clinicaId,
+          pacienteId: plan.pacienteId,
+          anuladoEn: null,
+        },
         select: { id: true },
       });
       if (!diagnostico) throw new Error("El diagnóstico vinculado no existe o está anulado.");

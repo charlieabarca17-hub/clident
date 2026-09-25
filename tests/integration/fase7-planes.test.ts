@@ -587,3 +587,50 @@ describe("agregar un tratamiento no se cruza con presentar el plan — auditorí
     }
   });
 });
+
+describe("un ítem de plan no cruza de paciente — auditoría del 23-sep-2026", () => {
+  it("el diagnóstico de OTRO paciente de la misma clínica no se puede vincular", async () => {
+    // Mismo patrón que el hallazgo #1 del 21-sep: la guarda preguntaba "¿es de
+    // esta clínica?" y no "¿es de este paciente?". Un plan de A terminaba
+    // colgando de la pulpitis de B.
+    const otro = await crearPaciente(
+      { ...ctx, roles: ["RECEPCION"] },
+      CrearPacienteSchema.parse({
+        nombres: "Otro",
+        apellidos: "Paciente",
+        fechaNacimiento: "1988-03-02",
+        dui: "",
+        telefono: "7200-0009",
+        correo: "",
+        direccion: "",
+        responsable: null,
+        contactoEmergencia: { nombre: "Contacto", telefono: "7200-0010" },
+      }),
+    );
+    const diagnosticoAjeno = await crearDiagnostico(ctx, {
+      pacienteId: otro.id,
+      descripcion: "Pulpitis del otro paciente",
+      notas: null,
+      alcance: "DIENTE",
+      dientes: [{ fdi: 36, superficie: "COMPLETO" }],
+    });
+    const plan = await crearPlan(ctx, { pacienteId, titulo: "Cruce de paciente" });
+
+    await expect(
+      agregarPlanItem(ctx, {
+        planId: plan!.id,
+        tratamientoId: endodonciaId,
+        diagnosticoId: diagnosticoAjeno!.id,
+        precioAcordadoCentavos: 15000,
+        descuentoCentavos: 0,
+        dientes: [{ fdi: 36, superficie: "COMPLETO" }],
+      }),
+    ).rejects.toThrow(/diagnóstico vinculado no existe/i);
+    expect((await getPlan(ctx, plan!.id))!.items).toHaveLength(0);
+  });
+
+  it("el plan dice de qué paciente es, para que la pantalla no muestre el de otro", async () => {
+    const plan = await crearPlan(ctx, { pacienteId, titulo: "Dueño del plan" });
+    expect((await getPlan(ctx, plan!.id))!.pacienteId).toBe(pacienteId);
+  });
+});
