@@ -76,7 +76,9 @@ export default async function PlanPage({ params }: PlanPageProps) {
     getPacienteAdministrativo(ctx, id),
     getPlan(ctx, planId),
   ]);
-  if (!paciente || !plan) notFound();
+  // El plan tiene que ser de ESTE paciente: si no, la pantalla mostraría el plan
+  // de otro bajo este nombre y ofrecería los diagnósticos equivocados.
+  if (!paciente || !plan || plan.pacienteId !== paciente.id) notFound();
 
   const puedeEscribir = tienePermiso(ctx.roles, "clinico:write");
   const esBorrador = plan.estado === "BORRADOR";

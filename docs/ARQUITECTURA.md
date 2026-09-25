@@ -684,6 +684,10 @@ GRANT UPDATE (estado, actualizado_en) ON plan_items TO clident_app;
 
 **Por qué importa más de lo que parece:** la suite `price-snapshot` prueba que cambiar el **catálogo** no altera el ítem. **Nunca probó que nadie pudiera escribirle el precio directo.** Sin este `REVOKE`, un `UPDATE plan_items SET precio_unitario_centavos = 25000` sobre un plan **ya aceptado** pasa sin chistar, el plan sigue diciendo `ACEPTADO` con su fecha intacta, y ahora afirma que el paciente aceptó un precio que nunca vio. **Eso destruye exactamente la prueba de la oferta que §4.5 y el ADR-006 existen para conservar.**
 
+### Límite declarado: el diagnóstico de un `PlanItem` es del mismo paciente solo por código
+
+La FK `plan_items → diagnosticos` es `(clinica_id, diagnostico_id)`: **no incluye al paciente**, porque `plan_items` no tiene `paciente_id`. La migración `20260921000100` cerró ese mismo cruce para `aplicaciones_pago` y `eventos_odontograma`, pero no para esta relación. Hasta el 23-sep-2026 **ni la base ni la aplicación** lo impedían: un ítem del plan de A podía colgar del diagnóstico de B. Hoy lo impide `agregarPlanItem`, que busca el diagnóstico con el `pacienteId` del plan, y la pantalla del plan da 404 si el plan no es del paciente de la URL. **La capa de base sigue faltando** —meter `paciente_id` en `plan_items` y en su FK es un cambio de modelo que se aprueba antes (`FLUJO-DE-DESARROLLO.md` §5).
+
 ### Límite declarado: `plan_item_dientes`
 
 `plan_item_dientes` es **PUENTE_EDITABLE** (`SELECT, INSERT, DELETE`) porque editar los dientes de un **borrador** es delete+insert. **El privilegio no sabe qué es un borrador:** también permite borrarle los dientes a un ítem de un plan `ACEPTADO`. El alcance lo pone la aplicación, no la base. **Riesgo declarado, parte de la pendiente #17.**
