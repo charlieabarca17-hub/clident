@@ -2,9 +2,9 @@ import Link from "next/link";
 
 import { crearCitaDesdeFormulario } from "@/server/actions/citas";
 import { requireCtx } from "@/server/auth/context";
-import { requirePermiso } from "@/server/auth/permissions";
+import { requirePermiso, tienePermiso } from "@/server/auth/permissions";
 import { FechaCivilSchema, fechaHoyElSalvador } from "@/lib/validation/citas";
-import { prepararSeleccionPaciente } from "@/lib/agenda";
+import { VOLVER_A_AGENDA, prepararSeleccionPaciente } from "@/lib/agenda";
 import { listarOdontologosAgenda } from "@/server/db/citas";
 import { getPacienteParaAgenda, listarPacientes } from "@/server/db/pacientes";
 
@@ -26,6 +26,10 @@ export default async function NuevaCitaPage({ searchParams }: { searchParams: Nu
   // nunca recibe un valor que no exista entre sus opciones (`src/lib/agenda.ts`).
   const { opciones: opcionesPaciente, valorSeleccionado: pacienteSeleccionadoId } =
     prepararSeleccionPaciente(pacientes, preseleccion);
+  // Alta de paciente sin salir del flujo de la cita: se crea y se vuelve acá con
+  // el paciente preseleccionado y la misma fecha (`destinoTrasCrearPaciente`).
+  const puedeCrearPaciente = tienePermiso(ctx.roles, "paciente:write");
+  const rutaPacienteNuevo = `/pacientes/nuevo?${new URLSearchParams({ volver: VOLVER_A_AGENDA, fecha }).toString()}`;
 
   return (
     <main className="min-h-full bg-background p-5 sm:p-8">
@@ -49,6 +53,30 @@ export default async function NuevaCitaPage({ searchParams }: { searchParams: Nu
               Esta clínica tiene más de una sede. La selección de sede llegará antes de poder agendar en esa configuración.
             </p>
           ) : null}
+          <fieldset>
+            <legend className="text-sm font-medium">¿Para quién es la cita?</legend>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <span
+                aria-current="true"
+                className="rounded-lg border border-primary bg-primary/10 px-3 py-2 text-sm font-medium"
+              >
+                Paciente existente
+                <span className="block text-xs font-normal text-muted-foreground">Elegilo de la lista de abajo.</span>
+              </span>
+              {puedeCrearPaciente ? (
+                <Link
+                  href={rutaPacienteNuevo}
+                  className="rounded-lg border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+                >
+                  Paciente nuevo →
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    Lo registrás y volvés a esta cita con él ya elegido.
+                  </span>
+                </Link>
+              ) : null}
+            </div>
+          </fieldset>
+
           <div>
             <label htmlFor="pacienteId" className="block text-sm font-medium">Paciente</label>
             <select id="pacienteId" name="pacienteId" required defaultValue={pacienteSeleccionadoId} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm">

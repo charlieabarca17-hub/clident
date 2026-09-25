@@ -1,3 +1,5 @@
+import { FechaCivilSchema } from "@/lib/validation/citas";
+
 /**
  * Selección de paciente en el formulario de nueva cita.
  *
@@ -61,4 +63,27 @@ export function prepararSeleccionPaciente<T extends OpcionPaciente>(
   // exigir una elección explícita en vez de agendarle la cita a quien no era.
   const existe = opciones.some((paciente) => paciente.id === id);
   return { opciones, valorSeleccionado: existe ? id : "" };
+}
+
+/** Marcador fijo con el que el alta de paciente sabe que se abrió desde "Nueva cita". */
+export const VOLVER_A_AGENDA = "agenda";
+
+/**
+ * A dónde se va después de crear un paciente.
+ *
+ * Al agendar se puede elegir "paciente nuevo": se lo da de alta y se vuelve a la
+ * cita con ese paciente ya elegido (la preselección de arriba se encarga de que
+ * aparezca en el selector aunque no esté entre los primeros 50).
+ *
+ * **Por qué el destino se arma acá y no viene en la URL.** Si el formulario
+ * trajera "volvé a X" y el servidor redirigiera a X, cualquiera podría armar un
+ * enlace que, después de guardar, lleve a otro sitio (redirección abierta). Por
+ * eso el navegador solo manda un marcador, y el único valor que cambia algo es
+ * exactamente `"agenda"`. La fecha viaja solo si es un día que existe.
+ */
+export function destinoTrasCrearPaciente(pacienteId: string, volver: string, fecha: string): string {
+  if (volver !== VOLVER_A_AGENDA) return `/pacientes/${pacienteId}`;
+  const parametros = new URLSearchParams({ pacienteId });
+  if (FechaCivilSchema.safeParse(fecha).success) parametros.set("fecha", fecha);
+  return `/agenda/nueva?${parametros.toString()}`;
 }
