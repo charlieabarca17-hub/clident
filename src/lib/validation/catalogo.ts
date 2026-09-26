@@ -1,5 +1,25 @@
 import { z } from "zod";
 
+import { MAX_CENTAVOS } from "@/lib/money";
+
+/**
+ * Precio habitual de la clínica (ADR-020).
+ *
+ * `null` es un valor válido y significa **"este tratamiento todavía no tiene
+ * precio habitual"** — que no es lo mismo que cero y no bloquea nada.
+ *
+ * Llega en **centavos enteros**. La conversión desde lo que una persona escribe
+ * ("45.00") es trabajo de `centavosDesdeTexto` en la Server Action, como todo el
+ * dinero del proyecto (§12). Acá un `string` sería peor que un error: `Number("45.00")`
+ * da 45, y 45 centavos no es $45.00.
+ */
+const precioHabitual = z
+  .number({ message: "El precio habitual no es un monto válido." })
+  .int("El precio habitual debe llegar en centavos enteros (ADR-009).")
+  .min(0, "El precio habitual no puede ser negativo.")
+  .max(MAX_CENTAVOS, "El precio habitual excede el máximo que cabe en un Int.")
+  .nullable();
+
 const nombreTratamiento = z.string().trim().min(1, "El nombre es obligatorio.").max(120);
 const nombreCategoria = z.string().trim().min(1, "La categoría es obligatoria.").max(80);
 
@@ -60,6 +80,7 @@ export const CrearTratamientoSchema = z
     permiteMultiplesSuperficies: z.boolean(),
     requiereDiagnostico: z.boolean(),
     permiteMultiplesSesiones: z.boolean(),
+    precioHabitualCentavos: precioHabitual,
   })
   .superRefine(banderasCoherentes);
 
@@ -71,6 +92,9 @@ export type CrearTratamientoInput = z.infer<typeof CrearTratamientoSchema>;
 export const ActualizarTratamientoSchema = z.object({
   nombre: nombreTratamiento,
   activo: z.boolean(),
+  // El precio habitual SÍ se edita —cambia con el tiempo—, y editarlo no toca
+  // ningún plan existente: los planes guardan su propio snapshot (ADR-020).
+  precioHabitualCentavos: precioHabitual,
 });
 
 export type ActualizarTratamientoInput = z.infer<typeof ActualizarTratamientoSchema>;

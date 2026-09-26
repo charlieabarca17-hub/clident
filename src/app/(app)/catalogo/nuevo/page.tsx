@@ -39,9 +39,23 @@ export default async function NuevoTratamientoPage() {
             </label>
           </div>
 
+          <label className="block text-sm font-medium">Precio habitual de la clínica (USD)
+            <input
+              name="precioHabitual"
+              inputMode="decimal"
+              placeholder="45.00"
+              className="mt-1 w-full rounded-lg border px-3 py-2 font-normal sm:w-1/2"
+            />
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">
+              Opcional. Es tu propia tarifa, no una impuesta por CLIDENT: se precarga al agregar
+              este tratamiento a un plan y el odontólogo la puede cambiar antes de guardar. Dejalo
+              en blanco si todavía no tenés una tarifa para este tratamiento.
+            </span>
+          </label>
+
           <p className="rounded-lg bg-secondary/60 p-3 text-sm text-secondary-foreground">
-            Este catálogo no guarda precios. El odontólogo definirá el total acordado cuando agregue
-            el tratamiento al plan de cada paciente.
+            El precio que se cobra lo decide una persona, tratamiento por tratamiento y paciente por
+            paciente. Cambiar esta tarifa después no altera ningún plan ya armado.
           </p>
 
           <fieldset className="rounded-lg border p-4">

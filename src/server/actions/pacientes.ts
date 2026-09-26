@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { destinoTrasCrearPaciente } from "@/lib/agenda";
 import { CrearPacienteSchema } from "@/lib/validation/pacientes";
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso } from "@/server/auth/permissions";
@@ -54,5 +55,7 @@ export async function crearPacienteDesdeFormulario(formData: FormData): Promise<
   const datos = CrearPacienteSchema.parse(datosFormulario(formData));
   const paciente = await crearPacienteEnDb(ctx, datos);
   revalidatePath("/pacientes");
-  redirect(`/pacientes/${paciente.id}`);
+  // Si el alta se abrió desde "Nueva cita", se vuelve a la cita con este paciente
+  // ya elegido. El destino lo arma el servidor: el formulario solo manda un marcador.
+  redirect(destinoTrasCrearPaciente(paciente.id, texto(formData, "volver"), texto(formData, "fecha")));
 }

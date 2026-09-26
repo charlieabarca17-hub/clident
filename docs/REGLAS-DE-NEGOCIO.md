@@ -107,7 +107,7 @@ Además, **la base de datos obliga al orden correcto**: un cargo con dinero apli
 
 **Cómo se garantiza:** el cálculo del saldo a favor excluye los pagos anulados. Y **la base de datos no deja anular un pago cuyo dinero todavía esté aplicado a algún cargo**: primero hay que revertir las aplicaciones (§1.5), y recién entonces se puede anular. Ese orden sí lo obliga la base, no la memoria de quien lo haga.
 
-> **Lo que todavía NO está cerrado, y te lo debo decir:** hoy **nada impide deshacer una anulación**. Si alguien vuelve a poner un pago anulado como si estuviera vigente, **el crédito del cheque que rebotó revive** y se puede aplicar a deudas reales — justo lo que esta regla existe para impedir. La base no lo puede atajar sola: solo compara la fila consigo misma, no con lo que decía antes. **Es la decisión pendiente #12, y es de dinero.**
+> **Límite aceptado en ADR-016:** la base no puede impedir por sí sola que una actualización directa vuelva vigente un pago anulado, porque un `CHECK` no compara la fila anterior. La aplicación no ofrece esa acción y la reconciliación compara las anulaciones registradas en la auditoría —que no se puede editar— contra los pagos y cargos vigentes. Si alguien resucita uno por SQL, el control lo detecta **cuando se corre**: hoy ese control vive en el chequeo manual (`npm run reconciliar`) y todavía no corre solo en cada cambio. Es una garantía por **detección**, no por imposibilidad, y la detección depende de que alguien pase el chequeo.
 
 **Igual que todo lo demás: no se borra.** El pago anulado sigue visible, con su motivo y su responsable.
 
@@ -188,13 +188,19 @@ Además, **la base de datos obliga al orden correcto**: un cargo con dinero apli
 
 ## 2.1 Los precios de un plan no cambian nunca
 
-**La regla:** el precio del catálogo es una referencia. Cuando se agrega un tratamiento al plan, el odontólogo decide el precio para ese paciente. Ese monto queda guardado y **no cambia nunca**, aunque después cambie el catálogo. Ni siquiera mientras el plan está en borrador.
+**La regla:** cuando se agrega un tratamiento al plan, el odontólogo escribe el precio que acordó con ese paciente. Ese monto queda guardado y **no cambia nunca**. Ni siquiera mientras el plan está en borrador.
+
+**El catálogo sí guarda una tarifa habitual, y es de la clínica** (ADR-020). Sirve para dos cosas: que el precio venga ya escrito en el formulario —y no haya que teclear el mismo número cien veces— y que después se pueda responder *"cuánto cobré, cuánto era lo normal y cuánto di en tarifa preferencial"*. **No es un precio que CLIDENT imponga:** lo pone la clínica, el campo es editable y lo que el odontólogo escriba manda siempre.
+
+**El riesgo de eso, dicho de frente:** un número que aparece solo es un número que se acepta sin pensar. La decisión fue aceptar ese riesgo a cambio de la velocidad, con los ojos abiertos. Si algún día resulta que todos los precios acordados son idénticos al habitual, es señal de que nadie los está pensando y hay que revisar la precarga.
+
+**Y la tarifa habitual de hoy no reescribe el pasado:** el plan guarda, junto al precio acordado, **la tarifa que era habitual ese día**. Si la clínica sube su tarifa en marzo, lo que se registró como preferencial en enero sigue diciendo lo mismo.
 
 **Por qué:** un plan es un compromiso con un paciente. Si en marzo le presupuestaste una corona a $300 y en junio la clínica sube el precio a $380, ese paciente presupuestó $300. Si el sistema recalculara automáticamente, el paciente vería un número distinto al que se le dijo, y la clínica no tendría forma de demostrar qué se le ofreció ni cuándo. En términos legales: destruiría la prueba de la oferta.
 
 Lo mismo aplica hacia atrás: un reporte de ingresos del año pasado debe reflejar los precios de entonces, no los de hoy.
 
-**Cómo se garantiza:** el plan guarda su propio precio y **ya no mira el catálogo**. No es que se evite consultarlo: es que el precio del plan está en otro lado.
+**Cómo se garantiza:** el catálogo se lee **una sola vez**, al agregar el tratamiento al plan: de ahí salen el precio precargado, el nombre, el código y la tarifa habitual de ese día. Después el plan **ya no mira el catálogo**. No es que se evite consultarlo: es que todo lo que el plan necesita ya está copiado adentro.
 
 ## 2.2 El precio es por el tratamiento completo, no por sesión
 
@@ -222,7 +228,7 @@ Lo mismo aplica hacia atrás: un reporte de ingresos del año pasado debe reflej
 
 **Por qué:** el expediente clínico es un documento legal. Si un paciente reclama, si hay una demanda por mala praxis, o si la Junta de Vigilancia pide el expediente, la clínica tiene que poder mostrar **qué se supo, cuándo se supo y quién lo registró**. Un expediente que se puede editar sin dejar rastro no prueba nada — y un expediente que no prueba nada es peor que no tenerlo, porque da falsa seguridad.
 
-**Cómo se garantiza:** sobre las tablas del historial clínico, el sistema **no tiene permiso de borrar ni de modificar** en la base de datos. Solo puede agregar. Las alertas médicas y sus desactivaciones son registros separados: cerrar una alerta agrega un cierre con motivo, fecha y responsable; nunca reescribe ni reactiva la alerta original. Aunque un agente de IA escribiera código para borrar o reactivar historia clínica, la base de datos rechazaría la operación.
+**Cómo se garantiza:** sobre las tablas del historial clínico que son solo-agregar —eventos del odontograma, alertas y sus cierres, enmiendas, dientes de un procedimiento— el sistema **no tiene permiso de borrar ni de modificar** en la base de datos. Solo puede agregar. **Ojo, que no es todo el expediente:** `diagnosticos` y `planes` todavía tienen permiso de modificación en la base (lo que los protege hoy es el código), y en `procedimientos` se pueden cambiar la nota, el estado y la anulación. Cerrar eso es una decisión pendiente (auditoría del 23-sep-2026). Las alertas médicas y sus desactivaciones son registros separados: cerrar una alerta agrega un cierre con motivo, fecha y responsable; nunca reescribe ni reactiva la alerta original. Aunque un agente de IA escribiera código para borrar o reactivar historia clínica, la base de datos rechazaría la operación.
 
 ## 3.2 Las correcciones dejan trazabilidad
 
@@ -232,7 +238,7 @@ Lo mismo aplica hacia atrás: un reporte de ingresos del año pasado debe reflej
 |---|---|
 | El odontograma | Agrega un registro nuevo de anulación. **El original sigue ahí**, marcado como anulado, con el motivo. |
 | Una nota clínica | El autor la puede editar libremente por **12 horas**. Después, se guarda una **enmienda** que conserva el texto anterior, y la pantalla muestra "Nota enmendada el X por Y". |
-| Un procedimiento entero | Se **anula con motivo obligatorio** y se registra de nuevo. El anulado sigue visible. |
+| Un procedimiento entero | Se **anula con motivo obligatorio** y se registra de nuevo. El anulado sigue visible. **Si Caja ya cobró el tratamiento y es su única sesión realizada, primero se anula el cargo**: si no, quedaría un cobro por un tratamiento que en el expediente nunca ocurrió. |
 | Un cargo o un pago | Se anula con motivo. Nunca se borra. |
 
 **Por qué:** la diferencia entre corregir y ocultar es exactamente la diferencia entre un expediente confiable y uno adulterado. Un expediente que muestra "acá me equivoqué y así lo corregí" es **más** creíble ante un juez que uno impecable donde todo apareció perfecto a la primera.
@@ -282,7 +288,7 @@ Tratamientos que genera:
 
 ## 4.2 El catálogo no es lo asignado al paciente
 
-**La regla:** el catálogo maestro (la lista de precios de la clínica) y lo que se le asigna a un paciente son cosas separadas.
+**La regla:** el catálogo maestro (la lista de tratamientos que la clínica ofrece) y lo que se le asigna a un paciente son cosas separadas.
 
 ## 4.3 Lo planificado no es lo realizado
 
@@ -410,6 +416,8 @@ O sea: a diferencia del dinero y del odontograma, **estas transiciones son una r
 
 **`COMPLETADO` → `ANULADO` sí se permite**, y hace falta: **un tratamiento se puede marcar completado por error y no tener ningún procedimiento detrás.** La doctora tiene la lista del plan en pantalla y marca la fila de arriba — la corona en vez de la limpieza. No hay procedimiento de corona que anular. Sin esta transición, el ítem diría *"esta corona se completó"* **para siempre, sin salida**, y el expediente afirmaría un tratamiento que nunca ocurrió.
 
+**Cómo se garantiza:** anular un tratamiento se rechaza si tiene un procedimiento `REALIZADO` —el hecho se corrige anulando ese procedimiento— o un cobro vigente en Caja, que se anula primero. Lo hace el módulo de planes, con el mismo candado del tratamiento que usa Caja; la base no lo impide.
+
 Es el mismo argumento de `RECHAZADO` → `ANULADO`: **`CANCELADO` dice "se interrumpió"; `ANULADO` dice "esto nunca debió existir"**. Son cosas distintas, y a veces la segunda es la única cierta.
 
 `CANCELADO` y `ANULADO` son terminales.
@@ -512,6 +520,8 @@ Superficies:  Mesial + Oclusal
 **Quién ve el DUI completo:** administrador, odontólogo y caja, **solo** al abrir la ficha del paciente, y **cada consulta queda registrada**. Recepción nunca lo ve completo.
 
 **Cómo se garantiza:** el enmascarado lo calcula la base de datos, y los listados **ni siquiera consultan el dato real**. No se puede filtrar lo que nunca se pidió.
+
+**Y tampoco se puede buscar por pedazos:** quien no ve el DUI completo solo puede buscar un paciente por el DUI **entero** (el que el paciente dicta en recepción). Si pudiera buscar por fragmentos, bastaría probar "0123", "01234"… y mirar si el paciente sigue apareciendo para reconstruir el número sin dejar rastro.
 
 ## 5.5 Un paciente menor de edad tiene un responsable
 
@@ -628,7 +638,7 @@ Ninguna bloquea el arranque. **La lista se revisó en la auditoría del Ciclo 1*
 | # | Pregunta | Cuándo | Si se decide tarde |
 |---|---|---|---|
 | 1 | Si un paciente **no asiste**, ¿se libera el horario para alguien más? Hoy solo lo libera la cancelación. | Agenda | Barato |
-| 3 | **La forma del cobro:** IVA 13% (¿incluido o agregado?), **descuento de mostrador**, y en qué orden se aplican. Ver nota abajo. | Antes de Caja | **Caro: migrar datos financieros** |
+| 3 | **RESUELTO en Fase 9:** descuento por línea; el cargo es la suma de sus líneas; sin IVA hasta integrar DTE. | Caja | Resuelto — ADR-016 |
 | 4 | La ventana de **12 horas** para editar una nota clínica es arbitraria. ¿Cuál corresponde según las expectativas salvadoreñas de expediente clínico? | Procedimientos | Barato |
 | 5 | ¿El odontólogo ve **todos** los pacientes o solo los suyos? Hoy: todos. | Pacientes | Barato |
 | 6 | ¿Se van a guardar **radiografías o imágenes** en el expediente? **Serían el primer dato de un paciente que vive fuera de la base de datos** — ver nota abajo. | Pacientes | **Decisión grande, con su propio análisis de seguridad** |
@@ -637,20 +647,18 @@ Ninguna bloquea el arranque. **La lista se revisó en la auditoría del Ciclo 1*
 | 9 | **¿Cómo se le devuelve el efectivo a un paciente?** El sistema sabe reconocerle saldo a favor (§1.5), pero no sacar plata de la caja. | Antes de Caja | **Caro: migrar datos financieros** |
 | 10 | **RESUELTO en Ciclo 15:** el odontólogo fija un precio total por paciente; la primera sesión conserva ese total, las demás van incluidas y Caja cobra una sola vez por tratamiento. | Tratamientos | Resuelto — ADR-017 |
 | 11 | **¿Número de expediente correlativo?** Un menor sin DUI no tiene con qué buscarse (§5.5). | Pacientes | Columna nueva |
-| 12 | **¿Un pago anulado se puede des-anular?** Hoy **sí**, y eso **revive el crédito de un cheque que rebotó** (§1.6). La base no lo puede atajar sola. | Antes de Caja | **Caro: cambia cómo se anula todo** |
+| 12 | **RESUELTO en Fase 9:** la aplicación no permite des-anular y la reconciliación detecta cualquier resurrección contra la auditoría append-only. | Caja | Resuelto con riesgo residual aceptado — ADR-016 |
 | 13 | **¿Un procedimiento se puede reasignar a otro plan?** Hoy no: si te olvidaste de enlazarlo, hay que anularlo y rehacerlo. ¿Esa rigidez estorba en la práctica? | Procedimientos | Barato |
-| 15 | **Un cargo mal cobrado no se puede recrear.** Anularlo y volverlo a hacer —que es lo que manda el sistema para corregir un monto— **falla**. La única salida sería anular el procedimiento, o sea ensuciar el expediente clínico por un error de tipeo en Caja. | Antes de Caja | **Sin arreglo barato** |
+| 15 | **RESUELTO en Fase 9:** al anular un cargo se libera el procedimiento para cobrarlo de nuevo; las líneas anuladas permanecen como historial. | Caja | Resuelto — ADR-016 |
 | 18 | **RESUELTO en Ciclo 15:** el cargo directo y las cuotas se cuelgan del mismo tratamiento del plan; si existe uno, el otro se rechaza. Las activaciones no crean cobros separados. | Caja | Resuelto — ADR-017 |
 
 **Resueltas en el Ciclo 1:** la **ortodoncia por cuotas** — con fechas de vencimiento, los cuatro saldos de §1.8 y la separación de §1.9, sin romper la regla de que la cuenta por cobrar se registra solo en Caja. Y los **pacientes menores de edad** — con el responsable de §5.5; solo queda el identificador (#11).
 
 ## Las que hay que entender antes de responder
 
-### #3 — El IVA no es lo único que define cómo se ve un cobro
+### #3 — Forma del cobro — **resuelta en Fase 9 (ADR-016)**
 
-Un plan puede llevar descuento; **un cobro no tiene dónde guardarlo.** El descuento de mostrador —"te lo dejo en $80 de una vez"— es el caso más común de una clínica salvadoreña y hoy no tiene lugar en el sistema. Y con IVA hay que decidir además si el descuento va antes o después del impuesto, y si el impuesto se calcula sobre el total o línea por línea (dan resultados distintos por centavos, y esos centavos son los que después no cuadran en el corte de caja).
-
-**Es una sola decisión.** Contestarla en pedazos significa pagar la migración dos o tres veces.
+Cada línea conserva el precio original, el descuento de mostrador y el monto final; la base exige que el monto sea `precio − descuento`. El cargo es la suma exacta de sus líneas, incluidas las cuotas. El IVA no se inventa antes de integrar el DTE y podrá agregarse después sin reescribir lo ya cobrado.
 
 ### #10 — Cuánto vale cada sesión — **resuelto en el Ciclo 15 (ADR-017)**
 
@@ -670,6 +678,6 @@ Y algo práctico: la clínica te lo va a pedir en el mes 2, no en el año 2.
 
 ---
 
-**Las más caras que siguen abiertas son la 3, la 9, la 12 y la 15:** su costo de decidirse tarde es migrar datos financieros con historia que ya no cuadra. Las #10 y #18 quedaron resueltas por ADR-017.
+**Las decisiones financieras grandes que siguen abiertas son la #2 (corte de caja) y la #9 (devolución de efectivo).** La #6 (imágenes) requiere un ADR propio de seguridad. Las #3, #12 y #15 quedaron resueltas por ADR-016; las #10 y #18, por ADR-017.
 
 La protección de #18 ahora está en el flujo y en la base: un tratamiento no puede tener simultáneamente cobro único y cuotas vigentes.

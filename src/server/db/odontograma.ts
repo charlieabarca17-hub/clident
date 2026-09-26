@@ -16,6 +16,7 @@ import type {
 } from "@/lib/validation/odontograma";
 
 import { proyectarEstadoSuperficie } from "./raw/proyectar-estado-superficie";
+import { ErrorReglaClinica } from "@/lib/errors";
 import { conTenant, type TenantTransaction } from "./tenant";
 
 const SELECT_EVENTO = {
@@ -137,7 +138,7 @@ export async function registrarCondicion(ctx: TenantContext, input: RegistrarCon
         select: { id: true },
       });
       if (!diagnostico) {
-        throw new Error("El diagnóstico vinculado no existe o está anulado.");
+        throw new ErrorReglaClinica("El diagnóstico vinculado no existe o está anulado.");
       }
     }
 

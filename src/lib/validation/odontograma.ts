@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { buscarDiente, SUPERFICIES } from "@/lib/dientes";
 import { CONDICIONES } from "@/lib/odontograma";
+import { fechaHoraClinicaSchema } from "@/lib/validation/fecha-hora";
 
 export const RegistrarCondicionSchema = z
   .object({
@@ -11,17 +12,10 @@ export const RegistrarCondicionSchema = z
     condicion: z.enum(CONDICIONES),
     // Vacío = ahora. Un valor permite registrar hallazgos retroactivos (una
     // radiografía de la semana pasada) sin mentir sobre cuándo ocurrieron.
-    ocurridoEn: z
-      .string()
-      .trim()
-      .optional()
-      .transform((valor) => (valor ? new Date(valor) : new Date()))
-      .refine((fecha) => !Number.isNaN(fecha.getTime()), {
-        message: "La fecha del hallazgo no es válida.",
-      })
-      .refine((fecha) => fecha.getTime() <= Date.now() + 60_000, {
-        message: "El hallazgo no puede estar en el futuro.",
-      }),
+    ocurridoEn: fechaHoraClinicaSchema({
+      invalida: "La fecha del hallazgo no es válida.",
+      futura: "El hallazgo no puede estar en el futuro.",
+    }),
     diagnosticoId: z
       .string()
       .trim()

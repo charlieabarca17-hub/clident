@@ -7,6 +7,7 @@ type PlanItemDb = {
   tratamientoCodigo: string;
   tratamientoNombre: string;
   precioUnitarioCentavos: number;
+  precioHabitualCentavos: number | null;
   descuentoCentavos: number;
   estado: EstadoPlanItem;
   diagnosticoId: string | null;
@@ -16,6 +17,7 @@ type PlanItemDb = {
 
 type PlanDb = {
   id: string;
+  pacienteId: string;
   titulo: string | null;
   estado: EstadoPlan;
   presentadoEn: Date | null;
@@ -34,9 +36,18 @@ export function toPlanItemDto(item: PlanItemDb) {
     tratamientoCodigo: item.tratamientoCodigo,
     tratamientoNombre: item.tratamientoNombre,
     precioUnitarioCentavos: item.precioUnitarioCentavos,
+    precioHabitualCentavos: item.precioHabitualCentavos,
     descuentoCentavos: item.descuentoCentavos,
     // Derivado para mostrar; el dato canónico son los dos campos de arriba.
     precioFinalCentavos: item.precioUnitarioCentavos - item.descuentoCentavos,
+    // Tarifa preferencial (ADR-020): cuánto se cobró por debajo de lo habitual
+    // DE ESE MOMENTO. No es un campo guardado —sería un tercer número que puede
+    // desalinearse—: es la diferencia contra el snapshot. `null` cuando el
+    // tratamiento no tenía precio habitual, que no es lo mismo que cero.
+    preferencialCentavos:
+      item.precioHabitualCentavos === null
+        ? null
+        : Math.max(0, item.precioHabitualCentavos - item.precioUnitarioCentavos),
     estado: item.estado,
     diagnosticoId: item.diagnosticoId,
     creadoEn: item.creadoEn.toISOString(),
@@ -49,6 +60,7 @@ export type PlanItemDto = ReturnType<typeof toPlanItemDto>;
 export function toPlanDto(plan: PlanDb) {
   return {
     id: plan.id,
+    pacienteId: plan.pacienteId,
     titulo: plan.titulo,
     estado: plan.estado,
     presentadoEn: plan.presentadoEn?.toISOString() ?? null,

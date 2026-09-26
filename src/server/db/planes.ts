@@ -16,10 +16,13 @@ import type {
   CrearPlanInput,
 } from "@/lib/validation/planes";
 
+import { bloquearPlan } from "./raw/bloquear-plan";
+import { bloquearPlanItemParaCaja } from "./raw/bloquear-plan-item-caja";
 import { conTenant, type TenantTransaction } from "./tenant";
 
 const SELECT_PLAN = {
   id: true,
+  pacienteId: true,
   titulo: true,
   estado: true,
   presentadoEn: true,
@@ -35,6 +38,7 @@ const SELECT_PLAN = {
       tratamientoCodigo: true,
       tratamientoNombre: true,
       precioUnitarioCentavos: true,
+      precioHabitualCentavos: true,
       descuentoCentavos: true,
       estado: true,
       diagnosticoId: true,
@@ -102,9 +106,12 @@ export async function crearPlan(ctx: TenantContext, input: CrearPlanInput) {
 export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItemInput) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // Candado antes de leer el estado: si alguien presenta el plan en el mismo
+    // instante, uno de los dos espera y ve lo que el otro confirmó.
+    if (!(await bloquearPlan(tx, { clinicaId: ctx.clinicaId, planId: input.planId }))) return null;
     const plan = await tx.planTratamiento.findFirst({
       where: { id: input.planId, clinicaId: ctx.clinicaId },
-      select: { id: true, estado: true },
+      select: { id: true, estado: true, pacienteId: true },
     });
     if (!plan) return null;
     if (plan.estado !== "BORRADOR") {
@@ -124,6 +131,10 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
         permiteSuperficies: true,
         permiteMultiplesSuperficies: true,
         requiereDiagnostico: true,
+        // Se lee acá, no del payload: si el habitual viajara en el request, un
+        // cliente podría mentir sobre cuánto era lo normal y con eso falsear
+        // cuánto se dio en tarifa preferencial (ADR-020).
+        precioHabitualCentavos: true,
       },
     });
     if (!tratamiento) {
@@ -134,8 +145,16 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
       throw new Error(`«${tratamiento.nombre}» exige un diagnóstico vinculado.`);
     }
     if (input.diagnosticoId) {
+      // Del MISMO paciente del plan, no solo de la clínica: la FK de
+      // `plan_items` todavía no incluye al paciente, así que esta guarda es la
+      // única capa (auditoría del 23-sep-2026, mismo patrón que d374a2f).
       const diagnostico = await tx.diagnostico.findFirst({
-        where: { id: input.diagnosticoId, clinicaId: ctx.clinicaId, anuladoEn: null },
+        where: {
+          id: input.diagnosticoId,
+          clinicaId: ctx.clinicaId,
+          pacienteId: plan.pacienteId,
+          anuladoEn: null,
+        },
         select: { id: true },
       });
       if (!diagnostico) throw new Error("El diagnóstico vinculado no existe o está anulado.");
@@ -169,6 +188,10 @@ export async function agregarPlanItem(ctx: TenantContext, input: AgregarPlanItem
         tratamientoCodigo: tratamiento.codigo,
         tratamientoNombre: tratamiento.nombre,
         precioUnitarioCentavos: input.precioAcordadoCentavos,
+        // Snapshot de lo que era habitual HOY. Si la clínica sube su tarifa en
+        // marzo, lo que se registró como preferencial en enero no cambia
+        // (ADR-020). Por eso se copia y no se consulta después con un join.
+        precioHabitualCentavos: tratamiento.precioHabitualCentavos,
         descuentoCentavos: input.descuentoCentavos,
         creadoPorId: ctx.membresiaId,
       },
@@ -219,6 +242,8 @@ export async function getPlan(ctx: TenantContext, planId: string) {
 export async function presentarPlan(ctx: TenantContext, planId: string) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // Mismo candado que agregarPlanItem: los cambios de un plan van en fila (§13).
+    if (!(await bloquearPlan(tx, { clinicaId: ctx.clinicaId, planId: planId }))) return null;
     const plan = await tx.planTratamiento.findFirst({
       where: { id: planId, clinicaId: ctx.clinicaId },
       select: { id: true, estado: true, items: { where: { estado: "PROPUESTO" }, select: { id: true } } },
@@ -250,6 +275,8 @@ export async function presentarPlan(ctx: TenantContext, planId: string) {
 export async function aceptarPlan(ctx: TenantContext, input: AceptarPlanInput) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // Mismo candado que agregarPlanItem: los cambios de un plan van en fila (§13).
+    if (!(await bloquearPlan(tx, { clinicaId: ctx.clinicaId, planId: input.planId }))) return null;
     const plan = await tx.planTratamiento.findFirst({
       where: { id: input.planId, clinicaId: ctx.clinicaId },
       select: { id: true, estado: true, items: { select: { id: true, estado: true } } },
@@ -289,6 +316,8 @@ export async function aceptarPlan(ctx: TenantContext, input: AceptarPlanInput) {
 export async function rechazarPlan(ctx: TenantContext, planId: string) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // Mismo candado que agregarPlanItem: los cambios de un plan van en fila (§13).
+    if (!(await bloquearPlan(tx, { clinicaId: ctx.clinicaId, planId: planId }))) return null;
     const plan = await tx.planTratamiento.findFirst({
       where: { id: planId, clinicaId: ctx.clinicaId },
       select: { id: true, estado: true },
@@ -313,6 +342,8 @@ export async function rechazarPlan(ctx: TenantContext, planId: string) {
 export async function anularPlan(ctx: TenantContext, planId: string, motivo: string) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // Mismo candado que agregarPlanItem: los cambios de un plan van en fila (§13).
+    if (!(await bloquearPlan(tx, { clinicaId: ctx.clinicaId, planId: planId }))) return null;
     const plan = await tx.planTratamiento.findFirst({
       where: { id: planId, clinicaId: ctx.clinicaId },
       select: { id: true, estado: true },
@@ -352,13 +383,36 @@ async function transicionarItem(
 ) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // El mismo candado que toman Caja y los procedimientos: el estado que se
+    // lee acá no puede cambiar (ni nacer un cobro) antes de escribir el nuevo.
+    if (!(await bloquearPlanItemParaCaja(tx, { clinicaId: ctx.clinicaId, planItemId: itemId }))) {
+      return null;
+    }
     const item = await tx.planItem.findFirst({
       where: { id: itemId, clinicaId: ctx.clinicaId },
-      select: { id: true, estado: true, planId: true, plan: { select: { estado: true } } },
+      select: {
+        id: true,
+        estado: true,
+        planId: true,
+        plan: { select: { estado: true } },
+        procedimientos: { where: { estado: "REALIZADO" }, select: { id: true }, take: 1 },
+        cargos: { where: { anuladoEn: null }, select: { id: true }, take: 1 },
+      },
     });
     if (!item) return null;
     if (!puedeTransicionarItem(item.estado, hacia)) {
       throw new Error(`Un tratamiento ${item.estado} no puede pasar a ${hacia}.`);
+    }
+    // ANULADO afirma "esto nunca debió existir" (§4.5). Solo es cierto si no hay
+    // ningún hecho clínico detrás —ese se corrige anulando el procedimiento— ni
+    // un cobro vigente, que Caja tiene que anular primero.
+    if (hacia === "ANULADO" && item.procedimientos.length > 0) {
+      throw new Error(
+        "Este tratamiento tiene un procedimiento realizado: si estuvo mal, se anula el procedimiento, no el tratamiento.",
+      );
+    }
+    if (hacia === "ANULADO" && item.cargos.length > 0) {
+      throw new Error("Este tratamiento tiene un cobro vigente en Caja: primero Caja debe anularlo.");
     }
     // Coherencia §4.5: sin plan aceptado no hay progreso clínico de ítems.
     if (itemRequierePlanAceptado(hacia) && item.plan.estado !== "ACEPTADO") {

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { MAX_CENTAVOS, aplicarPorcentaje, centavosDesdeTexto, formatearUSD, usdEditable } from "@/lib/money";
+import {
+  MAX_CENTAVOS,
+  aplicarPorcentaje,
+  centavosDesdeTexto,
+  centavosOpcionalesDesdeTexto,
+  formatearUSD,
+  usdEditable,
+} from "@/lib/money";
 
 describe("formatearUSD", () => {
   it("formatea centavos como USD salvadoreño", () => {
@@ -76,6 +83,24 @@ describe("aplicarPorcentaje", () => {
   });
 });
 
+describe("centavosOpcionalesDesdeTexto", () => {
+  it("vacío es 'sin monto', no un error", () => {
+    expect(centavosOpcionalesDesdeTexto("")).toBeNull();
+    expect(centavosOpcionalesDesdeTexto("   ")).toBeNull();
+  });
+
+  it("cero es un monto, no la ausencia de uno", () => {
+    expect(centavosOpcionalesDesdeTexto("0")).toBe(0);
+    expect(centavosOpcionalesDesdeTexto("12.50")).toBe(1250);
+  });
+
+  it("un inválido NO se vuelve null: se marca para que el esquema lo rechace", () => {
+    for (const malo of ["abc", "5.", "12.345", "-3", "99999999"]) {
+      expect(centavosOpcionalesDesdeTexto(malo)).toBeNaN();
+    }
+  });
+});
+
 describe("centavosDesdeTexto", () => {
   it("convierte montos escritos como los escribe una persona", () => {
     expect(centavosDesdeTexto("45")).toBe(4500);
@@ -100,6 +125,30 @@ describe("centavosDesdeTexto", () => {
     expect(centavosDesdeTexto("12.345")).toBeNull();
     expect(centavosDesdeTexto("12.")).toBeNull();
     expect(centavosDesdeTexto("1e3")).toBeNull();
+  });
+
+  it("una coma solo se acepta como separador de miles, nunca como decimal", () => {
+    // "12,50" es como se escribe $12.50 en buena parte de América Latina. Borrar
+    // la coma lo convertía en $1,250.00 —cien veces más— y se guardaba sin error
+    // en pagos, cargos, cuotas y en el precio acordado del plan, que es inmutable.
+    // Ante la duda, un monto ambiguo se rechaza: la persona lo vuelve a escribir.
+    expect(centavosDesdeTexto("12,50")).toBeNull();
+    expect(centavosDesdeTexto("0,99")).toBeNull();
+    expect(centavosDesdeTexto("1,5")).toBeNull();
+    expect(centavosDesdeTexto(",5")).toBeNull();
+    expect(centavosDesdeTexto("1,2,3")).toBeNull();
+    expect(centavosDesdeTexto("1,00")).toBeNull();
+    expect(centavosDesdeTexto("1234,567")).toBeNull();
+    expect(centavosDesdeTexto("1,000,00")).toBeNull();
+    expect(centavosDesdeTexto("1,000.5,0")).toBeNull();
+  });
+
+  it("los miles bien agrupados siguen funcionando", () => {
+    expect(centavosDesdeTexto("1,000")).toBe(100000);
+    expect(centavosDesdeTexto("1,000.00")).toBe(100000);
+    expect(centavosDesdeTexto("$12,345.67")).toBe(1234567);
+    expect(centavosDesdeTexto("1,234,567.89")).toBe(123456789);
+    expect(centavosDesdeTexto("999")).toBe(99900);
   });
 
   it("rechaza montos que no caben en un Int de PostgreSQL", () => {

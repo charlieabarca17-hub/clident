@@ -24,7 +24,7 @@ Los ADR existen porque las decisiones de este proyecto tienen razones que no se 
 | [ADR-003](ADR-003-usuario-membresia-roles.md) | Usuario global + Membresías + múltiples roles | Aceptado |
 | [ADR-004](ADR-004-fk-compuestas.md) | Foreign keys compuestas multi-tenant | Aceptado |
 | [ADR-005](ADR-005-odontograma-eventos.md) | Odontograma basado en eventos append-only | Aceptado |
-| [ADR-006](ADR-006-snapshot-precios.md) | Snapshot histórico de tratamientos y precios | Aceptado |
+| [ADR-006](ADR-006-snapshot-precios.md) | Snapshot histórico de tratamientos y precios | Aceptado — *superseded parcialmente por ADR-017 y ADR-018; ADR-020 reactiva la prohibición del join* |
 | [ADR-007](ADR-007-deuda-nace-en-cargo.md) | La cuenta por cobrar se registra exclusivamente en `Cargo` | Aceptado — *superseded parcialmente por ADR-013 y ADR-017* |
 | [ADR-008](ADR-008-agenda-exclude.md) | Agenda protegida por `EXCLUDE` constraint | Aceptado |
 | [ADR-009](ADR-009-centavos-enteros.md) | Centavos enteros para dinero | Aceptado |
@@ -36,6 +36,9 @@ Los ADR existen porque las decisiones de este proyecto tienen razones que no se 
 | [ADR-015](ADR-015-migrador-neon-y-bootstrap-incremental.md) | Migrador Neon sin bypass + bootstrap incremental | Aceptado |
 | [ADR-016](ADR-016-forma-de-cobro-y-cuotas.md) | Forma del cobro, cuotas y pendientes de Caja | Aceptado — *superseded parcialmente por ADR-017* |
 | [ADR-017](ADR-017-precio-acordado-y-cobro-unico.md) | Precio acordado por paciente y cobro único por tratamiento | Aceptado |
+| [ADR-018](ADR-018-catalogo-sin-precios.md) | El catálogo no contiene precios | **Superseded parcialmente por ADR-020** — *documentado a posteriori* |
+| [ADR-019](ADR-019-google-calendar-por-odontologo.md) | Google Calendar por odontólogo, sin datos clínicos | Aceptado — *documentado a posteriori* |
+| [ADR-020](ADR-020-precio-habitual-y-preferencial.md) | Precio habitual por clínica y registro de tarifa preferencial | Aceptado — *supersede parcialmente ADR-018* |
 
 ## Formato
 

@@ -2,20 +2,16 @@ import { z } from "zod";
 
 import { buscarDiente, SUPERFICIES } from "@/lib/dientes";
 import { CONDICIONES } from "@/lib/odontograma";
+import { fechaHoraClinicaSchema } from "@/lib/validation/fecha-hora";
 
 export const RealizarProcedimientoSchema = z
   .object({
     pacienteId: z.string().trim().min(1),
     planItemId: z.string().trim().min(1, "Elegí el tratamiento del plan."),
-    realizadoEn: z
-      .string()
-      .trim()
-      .optional()
-      .transform((valor) => (valor ? new Date(valor) : new Date()))
-      .refine((fecha) => !Number.isNaN(fecha.getTime()), { message: "La fecha no es válida." })
-      .refine((fecha) => fecha.getTime() <= Date.now() + 60_000, {
-        message: "Un procedimiento no puede realizarse en el futuro.",
-      }),
+    realizadoEn: fechaHoraClinicaSchema({
+      invalida: "La fecha no es válida.",
+      futura: "Un procedimiento no puede realizarse en el futuro.",
+    }),
     notasClinicas: z
       .string()
       .trim()

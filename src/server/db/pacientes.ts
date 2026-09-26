@@ -2,7 +2,8 @@ import "server-only";
 
 import type { Prisma } from "./generated/client";
 import type { TenantContext } from "@/server/auth/types";
-import { requirePermiso } from "@/server/auth/permissions";
+import { requirePermiso, tienePermiso } from "@/server/auth/permissions";
+import { esFormatoDui, normalizarDui } from "@/lib/dui";
 import {
   toPacienteAdministrativoDto,
   toPacienteDetalleDto,
@@ -120,6 +121,17 @@ export async function buscarPacientes(ctx: TenantContext, termino: string) {
   const busqueda = termino.trim();
   if (busqueda.length < 2) return [];
 
+  // Quien no puede VER el DUI tampoco puede buscarlo por pedazos: probando
+  // fragmentos y mirando si el paciente sigue apareciendo, lo reconstruiría sin
+  // dejar rastro (REGLAS §5.4). Sin `read_pii` solo vale el DUI completo, que es
+  // el que el paciente dicta en el mostrador y no revela nada nuevo.
+  const duiCompleto = normalizarDui(busqueda);
+  const filtroDui: Prisma.PacienteWhereInput[] = tienePermiso(ctx.roles, "paciente:read_pii")
+    ? [{ dui: { contains: busqueda } }, { dui: duiCompleto }]
+    : esFormatoDui(duiCompleto)
+      ? [{ dui: duiCompleto }]
+      : [];
+
   return conTenant(ctx, async (tx) => {
     const pacientes = await tx.paciente.findMany({
       where: {
@@ -128,7 +140,7 @@ export async function buscarPacientes(ctx: TenantContext, termino: string) {
           { nombres: { contains: busqueda, mode: "insensitive" } },
           { apellidos: { contains: busqueda, mode: "insensitive" } },
           { telefono: { contains: busqueda } },
-          { dui: { contains: busqueda } },
+          ...filtroDui,
           { responsableTelefono: { contains: busqueda } },
         ],
       },

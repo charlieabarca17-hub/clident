@@ -1,11 +1,12 @@
 import { z } from "zod";
 
 import { MAX_CENTAVOS } from "@/lib/money";
+import { FechaCivilSchema } from "@/lib/validation/citas";
 
-const fechaCivil = z
-  .string()
-  .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha debe tener el formato AAAA-MM-DD.");
+// El formato solo no basta: "2026-02-30" pasa una regex y `new Date` la vuelve
+// el 2 de marzo, un cargo exigible en un día que nadie eligió. Se reutiliza la
+// validación de fecha civil de la agenda, que sí verifica que el día exista.
+const fechaCivil = z.string().trim().pipe(FechaCivilSchema);
 
 const centavos = (mensaje: string) =>
   z.number({ message: mensaje }).int(mensaje).min(0).max(MAX_CENTAVOS);

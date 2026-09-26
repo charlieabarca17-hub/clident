@@ -1,6 +1,6 @@
 # ADR-006 — Snapshot histórico de tratamientos y precios
 
-- **Estado:** Aceptado — superseded parcialmente por ADR-017 (solo el origen del monto)
+- **Estado:** Aceptado — superseded parcialmente por ADR-017 (el origen del monto) y por ADR-018 (el catálogo ya no tiene precios); ADR-020 devolvió una tarifa habitual por clínica, y con ella la prohibición del join
 - **Fecha:** 2026-07-17
 - **Ciclo:** 0
 
@@ -39,6 +39,21 @@ model PlanItem {
 
 > `Tratamiento.precioListaCentavos` se lee **exactamente una vez**: al crear un `PlanItem`. Después, el precio del plan es `PlanItem.precioUnitarioCentavos`. **Cualquier consulta que haga join de `PlanItem` a `Tratamiento` para mostrar o calcular un precio es un bug.** Cambiar el precio del catálogo nunca debe alterar un plan existente — **ni siquiera uno en `BORRADOR`**.
 
+> **Actualización, ADR-018 (19-jul-2026):** `Tratamiento.precioListaCentavos`
+> **ya no existe**. La regla de arriba se conserva como registro histórico de por
+> qué se llegó hasta acá; el join que prohibía hoy es imposible. Lo vigente:
+> el precio nace en `PlanItem` y no hay ninguna otra fuente. **Lo que sigue
+> plenamente vigente de este ADR es todo lo demás**: los snapshots de nombre y
+> código, la cascada a `Procedimiento` y `LineaCargo`, y la prohibición de
+> "normalizar" los campos copiados.
+
+> **Actualización, ADR-020 (22-sep-2026):** el catálogo vuelve a tener una
+> columna de precio, `Tratamiento.precioHabitualCentavos`, que es la tarifa de
+> la clínica y solo se precarga. **El join vuelve a ser posible, así que la
+> prohibición de arriba vuelve a regir tal cual**, y se extiende: la tarifa
+> preferencial se calcula contra el snapshot `PlanItem.precioHabitualCentavos`,
+> nunca contra el catálogo de hoy.
+
 El mismo patrón aplica en cascada: `Procedimiento.precioAplicadoCentavos` y `LineaCargo.precioUnitarioCentavos` también son snapshots. Un procedimiento ya cobrado no cambia de precio porque cambie el plan ni el catálogo.
 
 **También se congelan nombre y código:** renombrar "Resina" → "Restauración con resina compuesta" no debe reescribir presupuestos que el paciente ya firmó.
@@ -74,7 +89,9 @@ El mismo patrón aplica en cascada: `Procedimiento.precioAplicadoCentavos` y `Li
 **Mitigaciones:**
 1. Comentario ruidoso sobre cada campo snapshot.
 2. La regla, textual, en `CLAUDE.md` y `REGLAS-DE-NEGOCIO.md`.
-3. **Prueba de integración obligatoria:** crear tratamiento a $100 → agregar a plan → cambiar catálogo a $150 → afirmar que el ítem sigue en $100 y el total no cambió. **Incluye el caso `BORRADOR`** (el que la gente asume que "debería" actualizarse). Verifica también nombre y código, y que un procedimiento cobrado no cambie.
+3. **Prueba de integración obligatoria** (`tests/integration/fase7-planes.test.ts`, *"precio congelado (ADR-006)"*): agregar un tratamiento a un plan con un precio acordado → **renombrar el tratamiento en el catálogo** → afirmar que el ítem conserva su precio, su nombre y su código. **Incluye el caso `BORRADOR`** (el que la gente asume que "debería" actualizarse), y que un `UPDATE` directo a `plan_items.precio_unitario_centavos` recibe *permission denied* por privilegio de columna.
+
+   *Desde el ADR-018 la prueba renombra en vez de cambiar el precio: el precio de catálogo ya no existe, así que el escenario original es irreproducible. La garantía que se verifica es la misma.*
 
 ## Costo de revertir
 

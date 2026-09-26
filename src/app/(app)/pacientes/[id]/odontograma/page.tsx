@@ -2,26 +2,25 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Arcada, arcada } from "@/components/odontograma/arcada";
-import { DIENTES, SUPERFICIES } from "@/lib/dientes";
+import { buscarDiente, seleccionDeCara } from "@/lib/dientes";
 import {
   colorCondicion,
   CONDICIONES_DENTALES,
   etiquetaCondicion,
   textoSobreCondicion,
 } from "@/lib/odontograma";
-import {
-  anularEventoOdontogramaDesdeFormulario,
-  registrarCondicionDesdeFormulario,
-} from "@/server/actions/odontograma";
+import { anularEventoOdontogramaDesdeFormulario } from "@/server/actions/odontograma";
 import { requireCtx } from "@/server/auth/context";
 import { requirePermiso, tienePermiso } from "@/server/auth/permissions";
 import { listarDiagnosticos } from "@/server/db/diagnosticos";
 import { getOdontograma } from "@/server/db/odontograma";
 import { getPacienteAdministrativo } from "@/server/db/pacientes";
 
+import { FormularioCondicion } from "./formulario-condicion";
+
 type OdontogramaPageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ estado?: string | string[] }>;
+  searchParams: Promise<{ estado?: string | string[]; fdi?: string | string[]; cara?: string | string[] }>;
 };
 
 function fechaHora(fecha: string): string {
@@ -44,6 +43,12 @@ function edadEnAnios(fechaNacimiento: string): number {
 export default async function OdontogramaPage({ params, searchParams }: OdontogramaPageProps) {
   const [{ id }, consulta] = await Promise.all([params, searchParams]);
   const estadoAviso = typeof consulta.estado === "string" ? consulta.estado : undefined;
+
+  // La cara elegida con un clic en el odontograma viaja por la URL: así el
+  // enlace se puede compartir, el botón de atrás funciona y todo esto sigue
+  // andando sin una línea de JavaScript en el cliente.
+  const seleccion = seleccionDeCara(consulta.fdi, consulta.cara);
+  const dienteElegido = seleccion ? buscarDiente(seleccion.fdi) : undefined;
   const ctx = await requireCtx();
   requirePermiso(ctx, "clinico:read");
   const paciente = await getPacienteAdministrativo(ctx, id);
@@ -58,6 +63,13 @@ export default async function OdontogramaPage({ params, searchParams }: Odontogr
   const puedeEscribir = tienePermiso(ctx.roles, "clinico:write");
   const estados = new Map(odontograma.estados.map((e) => [`${e.fdi}:${e.superficie}`, e]));
   const diagnosticosVigentes = diagnosticos.filter((dx) => !dx.anulado);
+
+  const estadoDeLaCara = seleccion ? estados.get(`${seleccion.fdi}:${seleccion.superficie}`) : undefined;
+  const eventosDeLaCara = seleccion
+    ? odontograma.eventos.filter((e) => e.fdi === seleccion.fdi && e.superficie === seleccion.superficie)
+    : [];
+  const hrefDeCara = (fdi: number, superficie: string) =>
+    `/pacientes/${paciente.id}/odontograma?fdi=${fdi}&cara=${superficie}#cara`;
 
   const edad = edadEnAnios(paciente.fechaNacimiento);
   const tieneRegistrosTemporales = odontograma.estados.some((e) => e.fdi >= 51);
@@ -84,17 +96,20 @@ export default async function OdontogramaPage({ params, searchParams }: Odontogr
 
         <section className="rounded-2xl border bg-card p-5 shadow-sm">
           <h2 className="text-lg font-semibold">Dentición permanente</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Tocá una cara para ver qué se hizo ahí y registrar sobre ella.
+          </p>
           <div className="overflow-x-auto">
-            <Arcada dientes={arcada(1, 2)} estados={estados} arriba etiqueta="Arcada superior, dentición permanente" />
-            <Arcada dientes={arcada(4, 3)} estados={estados} arriba={false} etiqueta="Arcada inferior, dentición permanente" />
+            <Arcada dientes={arcada(1, 2)} estados={estados} arriba etiqueta="Arcada superior, dentición permanente" hrefDeCara={hrefDeCara} seleccion={seleccion} />
+            <Arcada dientes={arcada(4, 3)} estados={estados} arriba={false} etiqueta="Arcada inferior, dentición permanente" hrefDeCara={hrefDeCara} seleccion={seleccion} />
           </div>
 
           {mostrarTemporal ? (
             <>
               <h2 className="pt-4 text-lg font-semibold">Dentición temporal</h2>
               <div className="overflow-x-auto">
-                <Arcada dientes={arcada(5, 6)} estados={estados} arriba etiqueta="Arcada superior, dentición temporal" />
-                <Arcada dientes={arcada(8, 7)} estados={estados} arriba={false} etiqueta="Arcada inferior, dentición temporal" />
+                <Arcada dientes={arcada(5, 6)} estados={estados} arriba etiqueta="Arcada superior, dentición temporal" hrefDeCara={hrefDeCara} seleccion={seleccion} />
+                <Arcada dientes={arcada(8, 7)} estados={estados} arriba={false} etiqueta="Arcada inferior, dentición temporal" hrefDeCara={hrefDeCara} seleccion={seleccion} />
               </div>
             </>
           ) : null}
@@ -118,53 +133,62 @@ export default async function OdontogramaPage({ params, searchParams }: Odontogr
           </ul>
         </section>
 
+        {seleccion ? (
+          <section id="cara" className="rounded-2xl border border-primary/40 bg-card p-5 shadow-sm">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-lg font-semibold">
+                Pieza {seleccion.fdi} · {seleccion.superficie === "COMPLETO" ? "pieza completa" : seleccion.superficie.toLowerCase()}
+              </h2>
+              <Link href={`/pacientes/${paciente.id}/odontograma`} className="text-sm text-muted-foreground underline-offset-4 hover:underline">
+                Quitar selección
+              </Link>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">{dienteElegido?.nombre}</p>
+
+            <p className="mt-3 text-sm">
+              <span className="text-muted-foreground">Ahora mismo: </span>
+              {estadoDeLaCara ? (
+                <span className="font-medium">
+                  {etiquetaCondicion(estadoDeLaCara.condicion)}
+                  {estadoDeLaCara.tratamientoPendiente ? " · con tratamiento pendiente" : ""}
+                </span>
+              ) : (
+                <span className="font-medium">sin registro</span>
+              )}
+            </p>
+
+            <h3 className="mt-4 text-sm font-medium">Qué se hizo acá</h3>
+            {eventosDeLaCara.length === 0 ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Todavía no hay ningún registro en esta cara.
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-1.5">
+                {eventosDeLaCara.map((evento) => (
+                  <li key={evento.id} className={`text-sm ${evento.anulado ? "text-muted-foreground line-through" : ""}`}>
+                    <span className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" style={{ backgroundColor: evento.condicion ? colorCondicion(evento.condicion) : "#ccc" }} aria-hidden />
+                    {evento.condicion ? etiquetaCondicion(evento.condicion) : evento.tipo}
+                    <span className="text-muted-foreground"> · {fechaHora(evento.ocurridoEn)} · {evento.registradoPorNombre}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : null}
+
         {puedeEscribir ? (
-          <section className="rounded-2xl border bg-card p-5 shadow-sm">
-            <h2 className="text-lg font-semibold">Registrar condición</h2>
-            <form action={registrarCondicionDesdeFormulario} className="mt-4 grid gap-4 sm:grid-cols-2">
-              <input type="hidden" name="pacienteId" value={paciente.id} />
-              <label className="block text-sm font-medium">Pieza *
-                <select name="fdi" required className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
-                  <option value="">— Elegí la pieza —</option>
-                  {DIENTES.map((diente) => (
-                    <option key={diente.fdi} value={diente.fdi}>
-                      {diente.fdi} · {diente.nombre}{diente.denticion === "TEMPORAL" ? " (temporal)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm font-medium">Cara *
-                <select name="superficie" required defaultValue="COMPLETO" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
-                  {SUPERFICIES.map((superficie) => (
-                    <option key={superficie} value={superficie}>
-                      {superficie === "COMPLETO" ? "Pieza completa" : superficie.charAt(0) + superficie.slice(1).toLowerCase()}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm font-medium">Condición *
-                <select name="condicion" required className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
-                  {CONDICIONES_DENTALES.map((entrada) => (
-                    <option key={entrada.condicion} value={entrada.condicion}>{entrada.etiqueta}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm font-medium">Fecha del hallazgo
-                <input name="ocurridoEn" type="datetime-local" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
-                <span className="mt-1 block text-xs font-normal text-muted-foreground">Vacío = ahora. Permite registrar hallazgos retroactivos sin alterar los más recientes.</span>
-              </label>
-              <label className="block text-sm font-medium sm:col-span-2">Diagnóstico vinculado
-                <select name="diagnosticoId" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
-                  <option value="">— Ninguno —</option>
-                  {diagnosticosVigentes.map((dx) => (
-                    <option key={dx.id} value={dx.id}>{dx.descripcion}</option>
-                  ))}
-                </select>
-              </label>
-              <div className="flex justify-end sm:col-span-2">
-                <button className="rounded-lg bg-primary transition-colors hover:bg-rosa-hover px-4 py-2 text-sm font-medium text-primary-foreground">Registrar</button>
-              </div>
-            </form>
+          <section id="registrar" className="rounded-2xl border bg-card p-5 shadow-sm">
+            <h2 className="text-lg font-semibold">
+              {seleccion
+                ? `Registrar en la pieza ${seleccion.fdi}`
+                : "Registrar condición"}
+            </h2>
+            <FormularioCondicion
+              pacienteId={paciente.id}
+              diagnosticos={diagnosticosVigentes}
+              fdiInicial={seleccion?.fdi ?? null}
+              caraInicial={seleccion?.superficie ?? null}
+            />
           </section>
         ) : null}
 

@@ -586,6 +586,65 @@ describe("estructura de seguridad", () => {
     }
   });
 
+  it("el CONTENIDO de cada política aísla por clínica, en USING y en WITH CHECK", async () => {
+    // La prueba de arriba solo mira que las políticas EXISTAN. Un `USING (true)`
+    // o un `WITH CHECK` borrado pasaban en verde para casi todas las tablas, y sin
+    // WITH CHECK un INSERT puede escribir filas en otra clínica (ARQUITECTURA §4).
+    // PostgreSQL guarda la expresión normalizada; se compara contra esa forma.
+    const POR_CLINICA =
+      "(clinica_id = NULLIF(current_setting('app.clinica_id'::text, true), ''::text))";
+    const resultado = await migrator.query<{
+      tablename: string;
+      policyname: string;
+      cmd: string;
+      roles: string[];
+      qual: string | null;
+      with_check: string | null;
+    }>(
+      `SELECT tablename, policyname, cmd, roles::text[] AS roles, qual, with_check
+       FROM pg_policies WHERE schemaname = 'public' ORDER BY tablename, policyname`,
+    );
+
+    // Las excepciones, cada una con su razón (ARQUITECTURA §6.5): una clínica se
+    // ve a sí misma o si el usuario tiene membresía activa en ella; una membresía
+    // se ve también desde el usuario, para poder elegir clínica.
+    // Texto exacto, no un patrón: con un patrón bastaba `EXISTS (SELECT 1)` para
+    // pasar, y eso le abriría todas las clínicas a cualquier usuario.
+    const EXCEPCIONES_USING: Record<string, string> = {
+      "clinicas.clinica_visible":
+        "((id = NULLIF(current_setting('app.clinica_id'::text, true), ''::text)) OR (EXISTS ( SELECT 1\n" +
+        "   FROM membresias\n" +
+        "  WHERE ((membresias.clinica_id = clinicas.id) AND (membresias.usuario_id = NULLIF(current_setting('app.usuario_id'::text, true), ''::text)) AND (membresias.activa = true)))))",
+      "membresias.membresia_lectura":
+        "((clinica_id = NULLIF(current_setting('app.clinica_id'::text, true), ''::text)) OR (usuario_id = NULLIF(current_setting('app.usuario_id'::text, true), ''::text)))",
+    };
+    const EXCEPCIONES_CHECK: Record<string, string> = {
+      "clinicas.clinica_visible": "(id = NULLIF(current_setting('app.clinica_id'::text, true), ''::text))",
+    };
+
+    for (const politica of resultado.rows) {
+      const nombre = `${politica.tablename}.${politica.policyname}`;
+      if (politica.policyname.startsWith("migraciones_")) {
+        // La política permisiva existe SOLO para el rol migrador.
+        expect(politica.roles, nombre).toEqual(["clident_migrator"]);
+        continue;
+      }
+      // Solo los dos roles de la aplicación, y siempre el de runtime: una política
+      // para PUBLIC u otro rol pasaría el resto de las aserciones.
+      expect(politica.roles, nombre).toContain("clident_app");
+      for (const rol of politica.roles) {
+        expect(["clident_app", "clident_readonly"], `${nombre}: rol ${rol}`).toContain(rol);
+      }
+
+      if (politica.cmd !== "INSERT") {
+        expect(politica.qual, nombre).toBe(EXCEPCIONES_USING[nombre] ?? POR_CLINICA);
+      }
+      if (politica.cmd !== "SELECT") {
+        expect(politica.with_check, nombre).toBe(EXCEPCIONES_CHECK[nombre] ?? POR_CLINICA);
+      }
+    }
+  });
+
   it("Agenda conserva CHECK y los dos EXCLUDE de PostgreSQL", async () => {
     const resultado = await migrator.query(
       `SELECT conname, contype, pg_get_constraintdef(oid) AS definicion
@@ -745,6 +804,26 @@ describe("paciente base", () => {
       expect.objectContaining({ id: pacienteAId, duiEnmascarado: null }),
     ]));
     expect(JSON.stringify(encontrados)).not.toContain(dui);
+  });
+
+  it("sin read_pii, el DUI solo se busca completo: por fragmentos no se reconstruye", async () => {
+    // Recepción no ve el DUI (REGLAS §5.4). Si pudiera buscar "0123", "01234"…
+    // y mirar si el paciente sigue apareciendo, lo reconstruiría en menos de
+    // 100 consultas sin dejar rastro. Con el DUI completo —el que el paciente
+    // dicta en el mostrador— sí lo encuentra: eso no revela nada que no tenga.
+    const recepcionB: TenantContext = { ...contextoB(), roles: ["RECEPCION"] };
+    const porFragmento = await buscarPacientes(recepcionB, dui.slice(0, 5));
+    expect(porFragmento.some((p) => p.id === pacienteBId)).toBe(false);
+
+    const exacto = await buscarPacientes(recepcionB, dui);
+    expect(exacto.some((p) => p.id === pacienteBId)).toBe(true);
+    const sinGuion = await buscarPacientes(recepcionB, dui.replace("-", ""));
+    expect(sinGuion.some((p) => p.id === pacienteBId)).toBe(true);
+    expect(JSON.stringify(exacto)).not.toContain(dui);
+
+    // Quien sí tiene read_pii conserva la búsqueda parcial de siempre.
+    const conPii = await buscarPacientes(contextoB(), dui.slice(0, 5));
+    expect(conPii.some((p) => p.id === pacienteBId)).toBe(true);
   });
 
   it("limita el DUI completo a paciente:read_pii y deja auditoría", async () => {

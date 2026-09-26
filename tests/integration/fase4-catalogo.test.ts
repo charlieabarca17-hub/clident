@@ -150,6 +150,7 @@ describe("clonarCatalogo", () => {
     const actualizado = await actualizarTratamiento(ctxA, resinaA.id, {
       nombre: "Nombre usado solo por la clínica A",
       activo: true,
+      precioHabitualCentavos: null,
     });
     expect(actualizado?.nombre).toBe("Nombre usado solo por la clínica A");
 
@@ -173,6 +174,7 @@ describe("catálogo por clínica", () => {
       permiteMultiplesSuperficies: false,
       requiereDiagnostico: false,
       permiteMultiplesSesiones: false,
+      precioHabitualCentavos: null,
     };
     const creado = await crearTratamiento(ctxA, base);
     expect(creado.codigo).toBe("ZZZ-01");
@@ -229,6 +231,7 @@ describe("catálogo por clínica", () => {
     const desactivado = await actualizarTratamiento(ctxA, tratamiento.id, {
       nombre: tratamiento.nombre,
       activo: false,
+      precioHabitualCentavos: null,
     });
     expect(desactivado?.activo).toBe(false);
 
@@ -252,8 +255,11 @@ describe("catálogo por clínica", () => {
     expect(resultado.rows).toEqual([]);
   });
 
-  it("estructuralmente no existe un precio en el catálogo", async () => {
-    const resultado = await migrator.query(
+  it("el precio que volvió es el habitual de la clínica, no un precio de plataforma", async () => {
+    // El ADR-020 devolvió UN precio al catálogo, y solo uno: la tarifa propia de
+    // cada clínica. Lo que el ADR-018 prohibió sigue prohibido — ni el precio de
+    // lista viejo ni ningún precio en las plantillas de plataforma.
+    const prohibidas = await migrator.query(
       `SELECT table_name, column_name FROM information_schema.columns
        WHERE table_schema = 'public'
          AND (table_name, column_name) IN (
@@ -261,7 +267,103 @@ describe("catálogo por clínica", () => {
            ('plantillas_tratamiento', 'precio_sugerido_centavos')
          )`,
     );
-    expect(resultado.rows).toEqual([]);
+    expect(prohibidas.rows).toEqual([]);
+
+    const plantillas = await migrator.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'plantillas_tratamiento'
+         AND column_name LIKE '%centavos%'`,
+    );
+    expect(plantillas.rows).toEqual([]);
+  });
+});
+
+describe("precio habitual de la clínica (ADR-020)", () => {
+  const plantilla = {
+    categoriaNombre: "Personalizados",
+    nombre: "Tratamiento con tarifa",
+    alcance: "BOCA" as const,
+    requiereDiente: false,
+    permiteMultiplesDientes: false,
+    permiteSuperficies: false,
+    permiteMultiplesSuperficies: false,
+    requiereDiagnostico: false,
+    permiteMultiplesSesiones: false,
+  };
+
+  it("cada clínica guarda su propia tarifa para el mismo código", async () => {
+    const enA = await crearTratamiento(ctxA, {
+      ...plantilla,
+      codigo: "TAR-01",
+      precioHabitualCentavos: 4500,
+    });
+    const enB = await crearTratamiento(ctxB, {
+      ...plantilla,
+      codigo: "TAR-01",
+      precioHabitualCentavos: 9900,
+    });
+    expect(enA.precioHabitualCentavos).toBe(4500);
+    expect(enB.precioHabitualCentavos).toBe(9900);
+
+    // Y ninguna de las dos ve la del otro: es un dato de inquilino como cualquier otro.
+    expect(await getTratamiento(ctxA, enB.id)).toBeNull();
+    expect((await getTratamiento(ctxA, enA.id))?.precioHabitualCentavos).toBe(4500);
+  });
+
+  it("un tratamiento puede no tener tarifa, y eso no bloquea nada", async () => {
+    const sinTarifa = await crearTratamiento(ctxA, {
+      ...plantilla,
+      codigo: "TAR-02",
+      precioHabitualCentavos: null,
+    });
+    expect(sinTarifa.precioHabitualCentavos).toBeNull();
+  });
+
+  it("editar la tarifa de A no toca la de B", async () => {
+    const enA = (await listarCatalogo(ctxA)).flatMap((c) => c.tratamientos)
+      .find((t) => t.codigo === "TAR-01")!;
+    const enB = (await listarCatalogo(ctxB)).flatMap((c) => c.tratamientos)
+      .find((t) => t.codigo === "TAR-01")!;
+
+    const actualizado = await actualizarTratamiento(ctxA, enA.id, {
+      nombre: enA.nombre,
+      activo: true,
+      precioHabitualCentavos: 7000,
+    });
+    expect(actualizado?.precioHabitualCentavos).toBe(7000);
+    expect((await getTratamiento(ctxB, enB.id))?.precioHabitualCentavos).toBe(9900);
+
+    // Vaciar el campo deja el tratamiento sin tarifa: es un estado válido.
+    const vaciado = await actualizarTratamiento(ctxA, enA.id, {
+      nombre: enA.nombre,
+      activo: true,
+      precioHabitualCentavos: null,
+    });
+    expect(vaciado?.precioHabitualCentavos).toBeNull();
+  });
+
+  it("la base rechaza una tarifa negativa aunque la aplicación se olvide", async () => {
+    await expect(
+      conContexto({ clinicaId: clinicaA.clinicaId }, (cliente) =>
+        cliente.query(
+          "UPDATE tratamientos SET precio_habitual_centavos = -1 WHERE codigo = 'TAR-02'",
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+  });
+
+  it("cross-tenant no puede escribirle la tarifa a otra clínica", async () => {
+    const enB = (await listarCatalogo(ctxB)).flatMap((c) => c.tratamientos)
+      .find((t) => t.codigo === "TAR-01")!;
+    // Cross-tenant devuelve null, no FORBIDDEN (§2.6): no se filtra que exista.
+    expect(
+      await actualizarTratamiento(ctxA, enB.id, {
+        nombre: "Intento desde A",
+        activo: true,
+        precioHabitualCentavos: 100,
+      }),
+    ).toBeNull();
+    expect((await getTratamiento(ctxB, enB.id))?.precioHabitualCentavos).toBe(9900);
   });
 });
 

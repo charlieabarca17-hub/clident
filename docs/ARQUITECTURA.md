@@ -69,7 +69,7 @@ clident/
 │  │  ├─ dto/                      # mappers DB → cliente (enmascarado)
 │  │  ├─ odontograma/  reducer.ts rebuild.ts
 │  │  ├─ operador/                 # flujos del operador — APLAZADO (ADR-011)
-│  │  └─ billing/dte/  types.ts noop-provider.ts   # seam DTE, sin implementación
+│  │  └─ billing/dte/  (previsto, NO creado: ver §12.7)   # seam DTE
 │  ├─ lib/
 │  │  ├─ validation/               # Zod, compartido
 │  │  └─ money.ts dui.ts dientes.ts errors.ts
@@ -185,7 +185,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE clident_migrator IN SCHEMA public
 | **PUENTE_EDITABLE** | `SELECT, INSERT, DELETE` (sin `UPDATE`) | `diagnostico_dientes`, `plan_item_dientes` — las únicas dos con `DELETE` legítimo: editar los dientes de un borrador es delete+insert |
 | **PROYECCION_DERIVADA** | `SELECT, INSERT, UPDATE, DELETE` | `estados_superficie` — derivada y regenerable; el rebuild y la anulación recalculada necesitan reescribirla |
 | **PARCIALMENTE_INMUTABLE** | `SELECT, INSERT` + `GRANT UPDATE (columnas mutables)` | `procedimientos` (§10.5), `cargos`, `pagos` (§12.5), **`plan_items` (§10.6)** |
-| **NORMAL** | `SELECT, INSERT, UPDATE` — **sin `DELETE`** | `pacientes`, `expedientes`, `citas`, `diagnosticos`, `planes`, `tratamientos`, `categorias_tratamiento`, `materiales`, `membresias`, `sucursales`, `clinicas`, `usuarios`, `contadores` |
+| **NORMAL** | `SELECT, INSERT, UPDATE` — **sin `DELETE`** | `pacientes`, `expedientes`, `citas`, `diagnosticos`, `planes`, `tratamientos`, `categorias_tratamiento`, `materiales`, `membresias`, `sucursales`, `clinicas`, `usuarios`, `preferencias_tratamiento`, `conexiones_google_calendar`, `sincronizaciones_cita_google` |
 
 **`DELETE` no se concede en ninguna parte salvo puentes y proyección.** Revisé todos los flujos documentados y ninguno lo necesita: las citas se cancelan, los planes se anulan, las membresías se desactivan, las sesiones son JWT sin tabla, y un `PlanItem` de un borrador pasa a `CANCELADO` en vez de borrarse.
 
@@ -197,7 +197,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE clident_migrator IN SCHEMA public
 -- 1º REVOCAR a nivel de tabla. 2º CONCEDER por columna. NUNCA al revés.
 REVOKE UPDATE ON procedimientos FROM clident_app;
 GRANT UPDATE (estado, notas_clinicas, anulado_en, anulado_por_id,
-              motivo_anulacion, actualizado_en)
+              motivo_anulacion, cargo_id, actualizado_en)
   ON procedimientos TO clident_app;
 ```
 
@@ -221,7 +221,7 @@ GRANT UPDATE (estado, notas_clinicas, anulado_en, anulado_por_id,
 
 ## 4.2.4 La prueba estructural de privilegios
 
-Espejo de la prueba estructural de RLS. Un registro canónico en `tests/integration/estructura-privilegios.test.ts` con la clase de cada tabla, y aserciones contra el catálogo:
+Espejo de la prueba estructural de RLS. **Vive en `tests/integration/fase1a.test.ts`, bloque "estructura de seguridad"** (el archivo `estructura-privilegios.test.ts` que este párrafo prometía nunca se creó), con la clase de cada tabla y aserciones contra el catálogo:
 
 ```sql
 -- 1. Toda tabla de public debe estar clasificada. `_prisma_migrations` es de Prisma:
@@ -602,7 +602,7 @@ Banderas de comportamiento: `requiereDiente`, `permiteMultiplesDientes`, `permit
 -- Fase 8. El orden NO es negociable (§4.2.2).
 REVOKE UPDATE ON procedimientos FROM clident_app;
 GRANT UPDATE (estado, notas_clinicas, anulado_en, anulado_por_id,
-              motivo_anulacion, actualizado_en)
+              motivo_anulacion, cargo_id, actualizado_en)
   ON procedimientos TO clident_app;
 ```
 
@@ -625,6 +625,7 @@ GRANT UPDATE (estado, notas_clinicas, anulado_en, anulado_por_id,
 | `estado` | **MUTABLE** | `REALIZADO → ANULADO`, amarrado por el `CHECK` de abajo |
 | `notasClinicas` | **MUTABLE** | ventana de gracia de 12 h |
 | `anuladoEn`, `anuladoPorId`, `motivoAnulacion` | **MUTABLE** | `NULL` → valor, una sola vez |
+| `cargoId` | **MUTABLE** | Caja reclama el procedimiento al cobrar y libera el puntero al anular el cargo (ADR-016) |
 | `actualizadoEn` | **MUTABLE** | **obligatoria en el `GRANT`**: Prisma la escribe en todo `UPDATE` (§4.2.2) |
 
 ```sql
@@ -635,13 +636,13 @@ ALTER TABLE procedimientos ADD CONSTRAINT procedimiento_estado_coherente CHECK (
 );
 ```
 
-**Dos límites declarados, no resueltos:**
+**Dos límites declarados:**
 - **La ventana de 12 h no es expresable** ni por privilegio ni por `CHECK` (un `CHECK` no puede usar `now()` de forma útil). Vive en la aplicación, con prueba. Excepción consciente: no es dinero.
 - **"Des-anular" es posible a nivel de privilegios, y NO solo acá.** `anulado_en` es mutable en `procedimientos`, **y también en `cargos` y en `pagos`** (§12.5). Un `CHECK` es de fila: no compara la vieja contra la nueva, así que **no puede** impedir volver `anulado_en` a `NULL`. Solo un trigger lo impediría, y el proyecto no usa triggers.
 
-  > **El lado financiero NO está protegido.** Un `UPDATE pagos SET anulado_en = NULL, ...` satisface `pago_anulado_coherente` sin chistar (primera rama), y **resucita el crédito a favor de un cheque que rebotó** — exactamente la plata inventada que §12.4 dice impedir. Lo mismo con `cargos`: `ANULADO → PENDIENTE` con `anulado_en = NULL` y `aplicado = 0` satisface `cargo_estado_coherente` y **revive una deuda cancelada**. Es **decisión pendiente #12**, y es de dinero, no de conveniencia clínica.
-  >
-  > **Alternativa a evaluar con #12** (encaja con la filosofía del proyecto y no necesita triggers): mover la anulación a una **tabla append-only** (`anulaciones_cargo`, `anulaciones_pago`, `anulaciones_procedimiento`) con `@@unique([clinicaId, cargoId])`. "Anulado" pasa a ser *"existe una fila"*, y como append-only no tiene `DELETE`, **des-anular se vuelve estructuralmente imposible** — la misma jugada que el odontograma. Cuesta reescribir los `CHECK` de coherencia, que hoy leen `anulado_en`.
+  > **Riesgo residual aceptado en ADR-016 (#12).** Un `UPDATE pagos SET anulado_en = NULL, ...` puede resucitar el crédito de un cheque que rebotó; lo mismo aplica a cargos y procedimientos. La aplicación no ofrece esa acción y la quinta consulta de reconciliación compara las anulaciones de `auditoria` —append-only— contra las filas vigentes. El mecanismo **detecta** una resurrección, no la vuelve imposible. Cambiar a tablas de anulación append-only exigiría otro ADR.
+
+  > **⚠ El alcance del control #5 es menor que esta promesa, y hay que decirlo.** La consulta mira **solo** `CARGO_ANULADO` y `PAGO_ANULADO`. El código registra **ocho** acciones de anulación —también `PROCEDIMIENTO_ANULADO`, `DIAGNOSTICO_ANULADO`, `PLAN_ANULADO`, `PLAN_ITEM_ANULADO`, `CONDICION_ANULADA` y `ODONTOGRAMA_CONDICION_ANULADA`—, y `clident_app` tiene `UPDATE` sobre `estado`, `anulado_en`, `anulado_por_id` y `motivo_anulacion` de `procedimientos` (§10.5), que es lo que haría falta para resucitar uno. **Un procedimiento anulado que vuelve a `REALIZADO` no lo detecta nada hoy:** pasa el `CHECK` de fila, `auditoria` conserva su `PROCEDIMIENTO_ANULADO`, y las cinco consultas siguen en cero. La detección existe para el dinero; para la historia clínica, no. Ampliar el #5 a las ocho acciones es un ciclo pendiente, no un detalle de redacción (auditoría independiente del 2026-09-21, hallazgo #2).
 
 `procedimiento_dientes` es **APPEND_ONLY** (`SELECT` + `INSERT`). Sin `UPDATE` **y sin `DELETE`**: con cualquiera de los dos se podría cambiar qué dientes cubrió un procedimiento, que es justo lo que esta sección declara inmutable. Un diente mal registrado se corrige anulando el procedimiento y volviéndolo a crear.
 
@@ -649,7 +650,7 @@ ALTER TABLE procedimientos ADD CONSTRAINT procedimiento_estado_coherente CHECK (
 
 - **Sin borrado físico.** Solo `anularProcedimiento(ctx, id, motivo)` → `ANULADO` + auditoría + evento compensatorio.
 - **Ventana de gracia:** `notasClinicas` editable por su autor durante 12 h. Después, `EnmiendaProcedimiento` preserva el texto anterior.
-- Un procedimiento **cobrado** no se puede anular sin anular antes el cargo.
+- Un procedimiento **cobrado** no se puede anular sin anular antes el cargo. Como el cobro es por `PlanItem` (ADR-017), eso se traduce en: **con un cobro directo vigente, la última sesión `REALIZADO` del ítem no se anula** —es el mismo invariante que `crearCargoDePlan` exige al crear el cobro—, y tampoco un procedimiento con `cargoId`. Las sesiones anteriores sí se anulan. `anularProcedimiento` toma el candado del `PlanItem` que usa Caja, así que no puede cruzarse con un cobro simultáneo. **Las cuotas no bloquean**, porque Caja las crea antes de cualquier sesión: un calendario sin sesión realizada es un estado que el sistema ya admite a propósito (§1.9 de `REGLAS-DE-NEGOCIO.md`).
 
 ---
 
@@ -676,12 +677,17 @@ GRANT UPDATE (estado, actualizado_en) ON plan_items TO clident_app;
 |---|---|---|
 | `precioUnitarioCentavos`, `descuentoCentavos` | **INMUTABLE** | **es dinero, y es la prueba de la oferta** (ADR-006) |
 | `tratamientoNombre`, `tratamientoCodigo`, `tratamientoId` | **INMUTABLE** | snapshots (ADR-006) |
+| `precioHabitualCentavos` | **INMUTABLE** | snapshot de la tarifa habitual de ese día; de él sale la tarifa preferencial (ADR-020) |
 | `planId`, `clinicaId`, `diagnosticoId` | **INMUTABLE** | mover un ítem a otro plan reescribe lo que el paciente aceptó |
 | `creadoEn`, `creadoPorId` | **INMUTABLE** | procedencia |
 | `estado` | **MUTABLE** | las transiciones de `REGLAS-DE-NEGOCIO.md` §4.5 |
 | `actualizadoEn` | **MUTABLE** | **obligatoria en el `GRANT`** (§4.2.2) |
 
 **Por qué importa más de lo que parece:** la suite `price-snapshot` prueba que cambiar el **catálogo** no altera el ítem. **Nunca probó que nadie pudiera escribirle el precio directo.** Sin este `REVOKE`, un `UPDATE plan_items SET precio_unitario_centavos = 25000` sobre un plan **ya aceptado** pasa sin chistar, el plan sigue diciendo `ACEPTADO` con su fecha intacta, y ahora afirma que el paciente aceptó un precio que nunca vio. **Eso destruye exactamente la prueba de la oferta que §4.5 y el ADR-006 existen para conservar.**
+
+### Límite declarado: el diagnóstico de un `PlanItem` es del mismo paciente solo por código
+
+La FK `plan_items → diagnosticos` es `(clinica_id, diagnostico_id)`: **no incluye al paciente**, porque `plan_items` no tiene `paciente_id`. La migración `20260921000100` cerró ese mismo cruce para `aplicaciones_pago` y `eventos_odontograma`, pero no para esta relación. Hasta el 23-sep-2026 **ni la base ni la aplicación** lo impedían: un ítem del plan de A podía colgar del diagnóstico de B. Hoy lo impide `agregarPlanItem`, que busca el diagnóstico con el `pacienteId` del plan, y la pantalla del plan da 404 si el plan no es del paciente de la URL. **La capa de base sigue faltando** —meter `paciente_id` en `plan_items` y en su FK es un cambio de modelo que se aprueba antes (`FLUJO-DE-DESARROLLO.md` §5).
 
 ### Límite declarado: `plan_item_dientes`
 
@@ -768,9 +774,11 @@ Un índice parcial permite como máximo un cargo directo vigente por `PlanItem`;
 
 ## 12.2 Snapshots (ADR-006)
 
-`Tratamiento.precioListaCentavos` se muestra como referencia. Al crear un `PlanItem`, el odontólogo elige el precio para ese paciente; después, la fuente de verdad es `PlanItem.precioUnitarioCentavos` y queda inmutable.
+**El catálogo guarda la tarifa habitual de la clínica, no el precio del paciente (ADR-020).** `Tratamiento.precioHabitualCentavos` (`Int?`, de la clínica, nunca de plataforma) se precarga en el formulario del plan; el monto que vale nace cuando el odontólogo crea el `PlanItem`. La fuente de verdad es `PlanItem.precioUnitarioCentavos` y queda inmutable.
 
-**Cualquier join de `PlanItem`/`Procedimiento`/`LineaCargo` a `Tratamiento` para obtener un precio es un bug.** Cambiar el catálogo nunca altera un plan existente, **ni siquiera en `BORRADOR`**. También se congelan nombre y código.
+**Cualquier join de `PlanItem`/`Procedimiento`/`LineaCargo` a `Tratamiento` para obtener un precio es un bug.** Editar el catálogo nunca altera un plan existente, **ni siquiera en `BORRADOR`**. Se congelan nombre, código, precio acordado y **también la tarifa habitual del momento**: `PlanItem.precioHabitualCentavos` es un snapshot, y la **tarifa preferencial** —`precioHabitual − precioUnitario`, cuando el habitual existe y es mayor— se deriva de él. No es una columna: un tercer número guardado podría desalinearse de los otros dos.
+
+> El preferencial responde *"cuánto se cobró por debajo de lo normal **ese día**"*. Calcularlo contra el catálogo actual haría que los números del pasado cambiaran solos cada vez que la clínica ajusta su tarifa. `descuentoCentavos` es **otra cosa**: una rebaja sobre el precio ya acordado, dentro del mismo plan. Un plan puede tener las dos y no se suman.
 
 ## 12.3 Dinero: centavos enteros (ADR-009)
 
@@ -840,9 +848,7 @@ ALTER TABLE aplicaciones_pago ADD CONSTRAINT aplicacion_signo_coherente CHECK (
 
 **Por qué solo completas.** Una reversa parcial no se puede hacer cumplir en la base: exigiría o un contador `monto_revertido` **dentro** de la fila de aplicación —imposible, la tabla es append-only y no admite `UPDATE`— o confiar el "no revertir más que el original" a código de aplicación, degradando un *imposible* a un *verificado*. Y es dinero. El caso "en realidad eran $30 de los $50" se cubre **revirtiendo los $50 y volviendo a aplicar $30 en la misma transacción**: dos `INSERT`, puro append-only, y el rastro queda completo y honesto.
 
-> **⚠ PENDIENTE DE VERIFICACIÓN EMPÍRICA.** Este diseño descansa en que **una columna generada `STORED` pueda ser el destino de una FK**. La documentación de PostgreSQL no lo confirma ni lo niega: las restricciones documentadas sobre columnas generadas y FK son del lado *referenciante* con `CASCADE`/`SET NULL`, no del lado referenciado con `RESTRICT`. **No se ha probado contra PostgreSQL real** porque el proyecto Neon todavía no existe. El ADR-004 verificó Prisma 7.8.0 con un esquema desechable antes de aceptarse; **esto exige el mismo estándar y se verifica en la Fase 0.**
->
-> **Plan B si falla:** `CHECK` de signo + reconciliación, sin la garantía del monto exacto → degrada a *verificado* y hay que revisar la decisión de "solo completas".
+> **Verificado empíricamente en Fase 9.** PostgreSQL acepta que la columna generada `monto_negado_centavos` sea destino de la FK compuesta de reversa. Las pruebas de integración reales cubren monto exactamente negado, misma clínica, mismo pago, mismo cargo, reversa única y prohibición de revertir una reversa.
 
 Tras la reversa, el dinero vuelve a ser crédito a favor del paciente por la fórmula de arriba, sin ningún caso especial. Devolverlo en efectivo es una decisión aparte y todavía **no está modelada**: no existe entidad de dinero que sale.
 
@@ -850,7 +856,7 @@ Tras la reversa, el dinero vuelve a ser crédito a favor del paciente por la fó
 
 `montoCentavos` **no se edita jamás, en ninguna de las dos tablas.** Todo el §13 descansa en ese número: subir el monto de un cargo parcialmente pagado crearía deuda en silencio —el `CHECK BETWEEN 0 AND monto` no chista— y bajar el de un pago volvería sobreaplicado algo que ya estaba aplicado. Un monto equivocado se **anula y se vuelve a crear**.
 
-> **⚠ Ese "se vuelve a crear" hoy NO funciona, y es la decisión pendiente #15.** `LineaCargo` lleva `@@unique([procedimientoId])` (§12.1) y `lineas_cargo` es APPEND_ONLY (§4.2.1). Anular un cargo **no borra sus líneas**, así que el segundo cargo por el mismo procedimiento choca contra el único con `23505`: **la línea de un cargo anulado ocupa el slot para siempre.** El único escape sería anular el *procedimiento* y rehacerlo — o sea, **ensuciar el expediente clínico para arreglar un error de tipeo en Caja**. Hay que resolverlo antes de la Fase 9, junto con #3.
+ADR-016 resolvió la antigua contradicción #15: `LineaCargo.procedimientoId` es una referencia informativa sin unicidad. El reclamo vigente vive en `Procedimiento.cargoId`; al anular el cargo se libera ese puntero, mientras las líneas anuladas permanecen como historial append-only. Por eso el cargo corregido puede crearse sin alterar el procedimiento clínico.
 
 ```sql
 REVOKE UPDATE ON cargos FROM clident_app;
@@ -971,7 +977,9 @@ export interface ProveedorDte {
 }
 ```
 
-Todas las fases cablean `NoopDteProvider` (lanza `NO_IMPLEMENTADO`). Nada en Caja depende del proveedor concreto. `Cargo.documentoFiscalId` queda nulo. La tabla `DocumentoFiscal` se crea vacía en la Fase 9 solo para fijar la relación, sin lógica. **No se inventa lógica tributaria.**
+> **Estado real (auditoría del 23-sep-2026):** el seam `src/server/billing/dte/` y `NoopDteProvider` **no existen en el código**. Lo único construido es la tabla `documentos_fiscales` (vacía, APPEND_ONLY) y `Cargo.documentoFiscalId` (nula). El párrafo siguiente es el diseño, no lo que hay.
+
+**Diseño previsto (no construido):** todas las fases cablearían `NoopDteProvider` (lanza `NO_IMPLEMENTADO`). Nada en Caja depende del proveedor concreto. `Cargo.documentoFiscalId` queda nulo. La tabla `DocumentoFiscal` se crea vacía en la Fase 9 solo para fijar la relación, sin lógica. **No se inventa lógica tributaria.**
 
 ---
 
@@ -1038,7 +1046,7 @@ Se descartó una **columna generada** para `estado`: la expresión debe ser `IMM
 | Anular un cargo con dinero aplicado | `CHECK` de coherencia con `monto_aplicado_centavos = 0` en la rama `ANULADO` (§13.2) |
 | **Deadlock** | **Orden determinista:** **todos los `Pago` por id ascendente, después todos los `Cargo` por id ascendente.** Materiales por id ascendente. Dientes por `(fdi, superficie)`. |
 | Stock negativo | `UPDATE` + `CHECK stock_actual >= 0`; `saldoDespues` desde `RETURNING` |
-| Doble cobro | `@@unique([procedimientoId])` |
+| Doble cobro | lock del `PlanItem` + validación de canal + índice parcial de cargo directo vigente y unicidad de cuotas (ADR-017) |
 | Correlativos | `ContadorClinica` con `UPDATE ... RETURNING`, **sin retry loop** |
 | Proyección pisada por evento viejo | `WHERE (ultimo_evento_en, ultimo_evento_creado_en) <= ($ocurridoEn, $creadoEn)` (§10.1) |
 
@@ -1067,18 +1075,23 @@ HAVING c.monto_aplicado_centavos <> COALESCE(SUM(a.monto_centavos), 0);
 
 La suma incluye las reversas con su signo negativo (§12.4), así que la consulta no cambia cuando existen.
 
-**Son cuatro, y las cuatro devuelven cero filas:**
+**Son cinco controles, definidos una sola vez en `infra/reconciliar.ts`, y los cinco deben devolver cero filas. Los cinco los verifica la suite de integración —que desde el 2026-09-21 corre en cada CI contra PostgreSQL real— importando `CONSULTAS_RECONCILIACION` del mismo archivo que ejecuta `npm run reconciliar`: no hay dos versiones que puedan desincronizarse.**
 
-| # | Contador | Contra |
-|---|---|---|
-| 1 | `cargos.monto_aplicado_centavos` | `Σ aplicaciones_pago.monto_centavos` del cargo |
-| 2 | `pagos.monto_aplicado_centavos` | `Σ aplicaciones_pago.monto_centavos` del pago |
-| 3 | `materiales.stock_actual` | `Σ movimientos_inventario` del material |
-| 4 | `cargos.monto_centavos` | `Σ lineas_cargo.monto_centavos` del cargo |
+| # | Control | Contra | ¿Lo verifica la suite? |
+|---|---|---|---|
+| 1 | `cargos.monto_aplicado_centavos` | `Σ aplicaciones_pago.monto_centavos` del cargo | Sí — `fase9-caja.test.ts` |
+| 2 | `pagos.monto_aplicado_centavos` | `Σ aplicaciones_pago.monto_centavos` del pago | Sí — `fase9-caja.test.ts` |
+| 3 | `materiales.stock_actual` | `Σ movimientos_inventario` del material | Sí — `fase10-inventario.test.ts` |
+| 4 | `cargos.monto_centavos` | `Σ lineas_cargo.monto_centavos` del cargo | Sí — `fase9-caja.test.ts` |
+| 5 | anulaciones vigentes | `auditoria` registra una anulación pero la fila aparece otra vez como vigente (ADR-016 #12) | Sí — `fase9-caja.test.ts` |
 
-La #4 cubre un hueco que nada más vigila: **nada garantiza que las líneas de un cargo sumen su monto.** Un cargo de $200 con líneas por $150 pasa todos los `CHECK` y cuadra con sus pagos; lo único que no cuadra es el desglose que ve el paciente. La solución estructural (contador o `CHECK` diferido) se decide junto con la forma de `Cargo` (§19 #3) — mientras tanto, la consulta lo detecta.
+> **Los dos huecos que este bloque declaraba quedaron cerrados en el Ciclo 22.** Eran: (a) que el control #5 viviera únicamente en `infra/reconciliar.ts` y dependiera de que alguien corriera el script a mano, y (b) que las cuatro consultas que sí corrían estuvieran **copiadas** dentro de las pruebas, de modo que corregir el script dejaba a la prueba verificando la versión vieja sin avisar. Hoy las pruebas **importan** `CONSULTAS_RECONCILIACION` y recorren las cinco: cambiar el texto de una consulta en `infra/reconciliar.ts` cambia lo que la suite verifica, y borrar una hace fallar la prueba en vez de bajar la cobertura en silencio. La suite también exige que existan filas de `auditoria` con `CARGO_ANULADO` y `PAGO_ANULADO` antes de dar por bueno el #5 — sin anulaciones registradas, ese control pasaría por vacío.
 
-> **La #4 depende de una pregunta sin responder: ¿todo `Cargo` lleva al menos una `LineaCargo`?** Una cuota de ortodoncia no tiene procedimiento detrás (es de arcada, no de diente), y ningún documento dice qué línea llevaría. **Si una cuota es un cargo sin líneas, la #4 devuelve 18 filas por paciente de ortodoncia** — con 40 pacientes, 720 falsos positivos diarios. Y un chequeo que grita todos los días con datos normales es un chequeo que se deja de mirar el tercer día, con lo que las consultas #1 y #2 —que sí son plata de verdad— se pierden en el ruido. **Se responde con la pendiente #3.** Hasta entonces, la #4 no forma parte del criterio de salida.
+> **Dos límites que siguen abiertos, declarados para no repetir el error de decir de más.** (a) **El #5 cubre dos de las ocho acciones de anulación** que el código registra: el dinero, no la historia clínica (§10.5). (b) **La suite verifica que las cinco consultas corren y devuelven cero en un sistema sano; no verifica que detecten una corrupción.** Neutralizar el contenido de una consulta —cambiar un nombre de acción, agregar un `AND false`, borrar una rama del `UNION`— la deja devolviendo cero con CI en verde. Borrar la consulta entera sí falla, porque la suite cuenta cinco. Cerrar (b) pide una prueba que corrompa a propósito y exija que el control lo note (auditoría independiente del 2026-09-21, hallazgos #2 y #5).
+
+La #4 cubre un hueco que nada más vigila: **nada garantiza que las líneas de un cargo sumen su monto.** ADR-016 fijó que todo cargo lleva al menos una línea; las cuotas usan una línea sin procedimiento. Un cargo de $200 con líneas por $150 pasa los `CHECK` de fila y cuadra con sus pagos, pero la reconciliación lo detecta.
+
+La #5 cubre el riesgo residual aceptado de las anulaciones mutables: no impide des-anular por SQL, pero hace que una fila resucitada contradiga el registro append-only de auditoría y deje de pasar como sana.
 
 Esto es, además, de lo poco del sistema que el propietario puede verificar sin programar: *"esta consulta debe devolver cero filas; si devuelve algo, hay plata mal contada."*
 
@@ -1238,7 +1251,7 @@ Los roles se crean una sola vez por rama con `infra/bootstrap-roles.sql`, versio
 | `tenant-isolation` | Para **cada** `get*`/`list*`: `ctx(A)` + `idDeB` → `NOT_FOUND`. Para cada `update*`/`anular*`: la fila de B queda **intacta**. **Estructural 1:** `pg_class`/`pg_policies` verifica que toda tabla con `clinica_id` tenga RLS habilitado, forzado y con política — *una tabla nueva sin RLS no compila*. **Estructural 2:** ningún `findUnique(` sin `clinicaId`. **Estructural 3:** nadie importa `@prisma/client` fuera de `src/server/db/**`. **Estructural 4:** nadie importa `crearCargo` fuera de `src/server/caja/**` — *la regla de dinero más importante del proyecto merece el mismo grep que la de Prisma; `budget-is-not-debt` prueba comportamiento y cierra las rutas de hoy, no las de mañana.* |
 | `odontogram-history` | 10/07 `CARIES` en 26 oclusal → 15/07 `TRATAMIENTO_INDICADO` → 20/07 `RESTAURACION`: 3 eventos persisten, timeline en orden. **El conteo de eventos es monótono creciente en toda la suite.** Anular → el original sigue existiendo. **Equivalencia de caminos (la prueba que hace segura la proyección):** escribir eventos por el camino normal —incluyendo uno retroactivo y una anulación— → correr `rebuild()` → **la proyección no cambia**. Anular la única condición de una superficie → la proyección vuelve al estado del último evento **no anulado** anterior, no queda mostrando la anulada. Dos eventos el mismo día → el desempate por `(ocurridoEn, creadoEn)` da el mismo resultado en vivo y en rebuild. Evento retroactivo → gana el `ocurridoEn` más reciente. FDI inválido → falla por FK. |
 | `referential-integrity` | `Cita` de A con `pacienteId` de B → violación de FK. `PlanItem` de A → `Tratamiento` de B. `Procedimiento` de A → `Paciente` de B. `AplicacionPago` de A → `Cargo` de B. **`UPDATE` del `clinicaId` de una fila → falla.** |
-| `concurrency` | Dos aplicaciones de $150 a un cargo de $200 en paralelo → una commitea, la otra viola el `CHECK` de `cargos`. **Un pago de $100 repartido en cinco aplicaciones de $100 a cinco cargos distintos de $100 → la quinta (o antes) viola el `CHECK` de `pagos`; el total aplicado nunca supera $100.** **Concurrente:** dos aplicaciones de $60 del mismo pago de $100 a dos cargos distintos → una commitea, la otra viola el `CHECK` de `pagos`. Dos pagos cruzados sobre los mismos dos cargos → ambos completan (orden determinista). **Anular concurrentemente dos cargos que comparten dos pagos → ambos completan, sin deadlock** (orden: todos los Pagos por id asc, después todos los Cargos). `estado='PAGADO'` con `montoAplicado < monto` → viola `CHECK`. Anular un cargo con `montoAplicado > 0` → viola el `CHECK` de coherencia; tras la reversa → commitea. Ídem con `Pago`. **Reconciliación (§13.4): tras toda la suite, las cuatro consultas devuelven cero filas.** Salidas concurrentes de stock → nunca negativo. |
+| `concurrency` | Dos aplicaciones de $150 a un cargo de $200 en paralelo → una commitea, la otra viola el `CHECK` de `cargos`. **Un pago de $100 repartido en cinco aplicaciones de $100 a cinco cargos distintos de $100 → la quinta (o antes) viola el `CHECK` de `pagos`; el total aplicado nunca supera $100.** **Concurrente:** dos aplicaciones de $60 del mismo pago de $100 a dos cargos distintos → una commitea, la otra viola el `CHECK` de `pagos`. Dos pagos cruzados sobre los mismos dos cargos → ambos completan (orden determinista). **Anular concurrentemente dos cargos que comparten dos pagos → ambos completan, sin deadlock** (orden: todos los Pagos por id asc, después todos los Cargos). `estado='PAGADO'` con `montoAplicado < monto` → viola `CHECK`. Anular un cargo con `montoAplicado > 0` → viola el `CHECK` de coherencia; tras la reversa → commitea. Ídem con `Pago`. **Reconciliación (§13.4): tras toda la suite, las cinco consultas importadas de `infra/reconciliar.ts` devuelven cero filas — #1, #2, #4 y #5 en `fase9-caja`, y la #3 también en `fase10-inventario` con datos de stock reales.** Salidas concurrentes de stock → nunca negativo. |
 | `reversas` | Revertir dos veces la misma aplicación → `23505`. **Revertir una reversa → rechazado** (`CHECK` de signo). Reversa con monto distinto de `−original` → violación de FK. Reversa sin original → violación de FK. Reversa apuntando a una aplicación de **otra clínica** → violación de FK. Reversa con `pagoId` o `cargoId` distinto del original → violación de FK. Reversa sin motivo → viola `CHECK`. Tras revertir, el crédito a favor del paciente vuelve a `+monto` y el cargo vuelve a `PENDIENTE`. **Revertir $50 y reaplicar $30 en la misma transacción → cargo con $30 aplicados, tres filas en el historial, reconciliación en cero.** |
 | `estructura-privilegios` | **Toda tabla de `public` está clasificada** (§4.2.1) — *una tabla nueva sin clase no compila*. Ninguna append-only tiene `UPDATE`/`DELETE`/`TRUNCATE` para `clident_app`. **`has_column_privilege('clident_app','procedimientos','precio_aplicado_centavos','UPDATE')` es `false`** — ídem `realizado_en`, `tratamiento_id`, y `monto_centavos` en `cargos` y `pagos`. `clident_app` **no** tiene `DELETE` sobre `procedimientos`, `cargos`, `pagos`, `pacientes`, `diagnosticos`, `planes` ni `citas`. `clident_readonly` no tiene nada más que `SELECT`. Ningún rol de aplicación es superusuario ni tiene `BYPASSRLS` (`pg_roles`). |
 | `pago-anulado` | Un `Pago` anulado **no aporta crédito a favor**. Anular un pago con aplicaciones → viola el `CHECK`; tras revertirlas → commitea. Cargo o pago con `monto = 0` → viola `CHECK`. |
@@ -1276,7 +1289,7 @@ Ninguna bloquea el arranque. **Revisadas y ampliadas en la auditoría del Ciclo 
 |---|---|---|---|
 | 1 | **`NO_ASISTIO` ¿libera el horario?** Hoy el `EXCLUDE` solo excluye `CANCELADA`. | Fase 2 | Migración |
 | 2 | **¿Corte de caja (apertura/cierre)?** No modelado. | Antes de Fase 9 | Backfill |
-| 3 | **Forma definitiva de `Cargo` y `LineaCargo`:** subtotal, **descuento**, impuesto, total, orden de redondeo. Incluye el IVA 13% (¿incluido o agregado?) pero **no se agota ahí** — ver nota abajo. Cierra también el hueco de Σ(líneas) vs monto (§13.4 #4). | Antes de Fase 9 | **Migración de datos financieros** |
+| 3 | **RESUELTO en Fase 9 (ADR-016):** descuento por línea con aritmética protegida; `Cargo = Σ líneas`; el IVA queda fuera hasta el DTE. | Antes de Fase 9 | Resuelto |
 | 4 | **Ventana de gracia de notas clínicas: ¿12 h?** Arbitraria; el propietario debe fijarla contra las expectativas salvadoreñas de expediente clínico. | Fase 8 | Barato |
 | 5 | **¿El odontólogo ve todos los pacientes o solo los suyos?** Hoy: todos. | Fase 3 | Un `where` |
 | 6 | **¿Radiografías / imágenes?** **Sería el primer dato de paciente que vive fuera de PostgreSQL** — ver nota abajo. | Antes de Fase 3 | **ADR de aislamiento propio + 9ª pieza de stack** |
@@ -1285,22 +1298,20 @@ Ninguna bloquea el arranque. **Revisadas y ampliadas en la auditoría del Ciclo 
 | 9 | **¿Cómo se devuelve el efectivo?** El sistema sabe reconocer crédito a favor (§12.4); **no existe entidad de dinero que sale**. | Antes de Fase 9 | **Migración de datos financieros** |
 | 10 | **RESUELTO en Ciclo 15 (ADR-017):** precio total acordado por paciente; primera sesión conserva el total, las demás 0; Caja cobra el `PlanItem` una vez. | Fase 7/8 | Resuelto |
 | 11 | **Paciente menor de edad.** Resuelto en el Ciclo 1 con columnas denormalizadas (§19 nota). Queda: **¿`numeroExpediente` correlativo por clínica?** Hoy un menor sin DUI no tiene identificador. | Fase 3 | Columna + backfill |
-| 12 | **Des-anular es posible en `procedimientos`, `cargos` Y `pagos`.** Un `CHECK` no puede impedir volver `anuladoEn` a `NULL` (§10.5). **Es de dinero:** des-anular un pago resucita el crédito de un cheque rebotado. Opciones: trigger (el proyecto no usa) o mover la anulación a tablas append-only. | **Antes de Fase 9** | **Migración: cambia la forma de la anulación** |
-| 15 | **`UNIQUE(procedimientoId)` en `LineaCargo` vs `lineas_cargo` append-only.** Hoy se contradicen: anular un cargo mal cobrado y recrearlo **falla con `23505`** — la línea del cargo anulado ocupa el slot único del procedimiento para siempre, y §12.5 manda anular-y-recrear como la vía normal de corregir un monto. Sin salida documentada salvo ensuciar el expediente clínico. | **Antes de Fase 9**, con #3 | **Sin arreglo barato: define la forma de `LineaCargo`** |
-| 16 | **¿Cómo se nombra "las cuotas de esta ortodoncia"?** Los 18 cargos no tienen columna que los agrupe (§12.6 descartó `PlanDePagos`). Cancelar la ortodoncia obliga a identificarlos a ojo, y "cargos futuros del paciente" también agarra la corona. **Y hay algo peor: sin agrupador no se puede cerrar el #18.** Opción aditiva: `grupoCuotasId` + `cuotaNumero`, o colgar los cargos del `PlanItem`. | **Antes de Fase 9** | **Backfill irreconstruible** |
+| 12 | **RESUELTO en Fase 9 (ADR-016):** se aceptó el riesgo residual de des-anular por SQL; la aplicación no ofrece esa acción y la reconciliación #5 detecta resurrecciones contra auditoría append-only. | **Antes de Fase 9** | Resuelto con detección, no prevención |
+| 15 | **RESUELTO en Fase 9 (ADR-016):** `LineaCargo.procedimientoId` dejó de ser único; `Procedimiento.cargoId` reclama y libera el procedimiento sin borrar las líneas históricas. | **Antes de Fase 9**, con #3 | Resuelto |
+| 16 | **RESUELTO en Fase 9 (ADR-016):** las cuotas llevan `planItemId` y `cuotaNumero`; ya se agrupan por tratamiento del plan. | **Antes de Fase 9** | Resuelto |
 | 17 | **Las transiciones de estado no tienen mecanismo en la base.** `ACEPTADO → PRESENTADO`, `COMPLETADO → CANCELADO` y la no-cascada de §4.6 los hace cumplir **la aplicación**, no PostgreSQL: un `CHECK` no ve el valor anterior (mismo límite que #12). También `plan_item_dientes` permite borrarle dientes a un plan ya aceptado. Opciones: triggers, o mover las transiciones a tabla append-only. | Fase 7 | Migración |
 | 18 | **RESUELTO en Ciclo 15 (ADR-017):** cargo directo y cuotas comparten `planItemId`; un lock y las validaciones impiden ambos canales simultáneos. | **Antes de Fase 9** | Resuelto |
-| 19 | **Una cuota con fecha mal tecleada no la atrapa nada.** `NOT NULL` cubre la fecha *ausente*; la fecha *equivocada* (2027 en vez de 2026 en la cuota 7) pasa todos los `CHECK`, no sale en mora —nunca vence— y la clínica cobra $1,020 de $1,080 sin que ningún reporte lo diga. Opción: `CHECK` de rango + confirmación obligatoria que muestre las 18 fechas. | Fase 9 | Barato |
+| 19 | **RESUELTO en Fase 9 (ADR-016):** `CHECK` de rango razonable y confirmación que muestra todas las fechas antes de crear el calendario. | Fase 9 | Resuelto |
 | 13 | **¿`planItemId` inmutable?** Está declarado inmutable (§10.5). "Olvidé enlazar el procedimiento al plan" obliga a anular y recrear. **¿Esa rigidez estorba en la práctica?** | Fase 8 | Un `GRANT` |
-| 14 | **Verificación empírica: ¿una columna generada puede ser destino de una FK?** De eso depende el diseño de reversas (§12.4). Los docs de PostgreSQL no lo dicen. | **Fase 0** | Rediseño de reversas |
+| 14 | **RESUELTO en Fase 9:** PostgreSQL aceptó la FK hacia la columna generada y la suite real verifica reversas exactas. | **Fase 9** | Resuelto |
 
 ## Notas sobre las decisiones caras
 
-### #3 — El IVA no es lo único que define la forma de `Cargo`
+### #3 — Forma de `Cargo` — **RESUELTA en Fase 9 (ADR-016)**
 
-`PlanItem` tiene `descuentoCentavos`; **`LineaCargo` no tiene ninguno.** El descuento de mostrador ("te lo dejo en $80 de una vez") es el caso más común de una clínica salvadoreña y hoy **no tiene dónde vivir**. Con IVA, además hay que decidir si el descuento va antes o después del impuesto, y si el IVA se calcula sobre el total del cargo o línea por línea (da resultados distintos en centavos, y esos centavos son los que después no cuadran en el corte de caja, #2).
-
-**Es una sola decisión, un solo momento, una sola migración.** Fragmentarla significa pagarla dos o tres veces.
+`LineaCargo` conserva `precioOriginalCentavos`, `descuentoCentavos` y `montoCentavos`; un `CHECK` exige `monto = original − descuento`, y la reconciliación exige `Cargo.montoCentavos = Σ líneas`. Todo cargo, incluidas las cuotas, lleva al menos una línea. El IVA no se modela antes del DTE: cuando corresponda llegará como ampliación aditiva, sin reinterpretar lo ya cobrado.
 
 ### #6 — Radiografías: el problema no es la tabla que falta
 

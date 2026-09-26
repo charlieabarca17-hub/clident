@@ -16,6 +16,7 @@ const base = {
   permiteMultiplesSuperficies: true,
   requiereDiagnostico: false,
   permiteMultiplesSesiones: false,
+  precioHabitualCentavos: null,
 };
 
 describe("CrearTratamientoSchema", () => {
@@ -54,19 +55,68 @@ describe("CrearTratamientoSchema", () => {
   });
 });
 
+describe("precio habitual (ADR-020)", () => {
+  it("acepta null: un tratamiento puede no tener tarifa todavía", () => {
+    expect(CrearTratamientoSchema.parse(base).precioHabitualCentavos).toBeNull();
+  });
+
+  it("acepta centavos enteros y conserva el monto tal cual", () => {
+    expect(CrearTratamientoSchema.parse({ ...base, precioHabitualCentavos: 4500 }).precioHabitualCentavos)
+      .toBe(4500);
+    // Cero es un precio habitual válido y NO es lo mismo que "sin tarifa".
+    expect(CrearTratamientoSchema.parse({ ...base, precioHabitualCentavos: 0 }).precioHabitualCentavos)
+      .toBe(0);
+  });
+
+  it("rechaza un monto negativo: espejo del CHECK de la base", () => {
+    expect(() => CrearTratamientoSchema.parse({ ...base, precioHabitualCentavos: -1 }))
+      .toThrow(/negativo/i);
+  });
+
+  it("rechaza decimales: el dinero llega en centavos enteros (ADR-009)", () => {
+    expect(() => CrearTratamientoSchema.parse({ ...base, precioHabitualCentavos: 45.5 }))
+      .toThrow(/centavos enteros/i);
+  });
+
+  it("rechaza NaN, que es como llega un texto que no era un monto", () => {
+    // La Server Action manda NaN en vez de null cuando alguien escribe "abc":
+    // devolver null ahí borraría el precio de la clínica en silencio.
+    expect(() => CrearTratamientoSchema.parse({ ...base, precioHabitualCentavos: Number.NaN }))
+      .toThrow(/no es un monto válido/i);
+  });
+
+  it("rechaza un texto en dólares: la conversión es de centavosDesdeTexto, no del esquema", () => {
+    // `Number("45.00")` da 45, y 45 centavos no es $45.00. El esquema no acepta
+    // strings justamente para que ese error no tenga dónde ocurrir.
+    expect(() => CrearTratamientoSchema.parse({ ...base, precioHabitualCentavos: "45.00" }))
+      .toThrow(/no es un monto válido/i);
+  });
+});
+
 describe("ActualizarTratamientoSchema", () => {
-  it("solo permite nombre y activo", () => {
+  it("solo permite nombre, activo y precio habitual", () => {
     const resultado = ActualizarTratamientoSchema.parse({
       nombre: "Resina compuesta",
       activo: false,
-      // Un cliente malicioso que intente colar precio, banderas o clinicaId no los verá salir.
-      precioListaCentavos: 5000,
+      precioHabitualCentavos: 5000,
+      // Un cliente malicioso que intente colar banderas o clinicaId no los verá salir.
       requiereDiente: false,
       clinicaId: "otra",
     });
     expect(resultado).toEqual({
       nombre: "Resina compuesta",
       activo: false,
+      precioHabitualCentavos: 5000,
     });
+  });
+
+  it("vaciar el campo deja el tratamiento sin tarifa, sin romper nada", () => {
+    expect(
+      ActualizarTratamientoSchema.parse({
+        nombre: "Resina compuesta",
+        activo: true,
+        precioHabitualCentavos: null,
+      }).precioHabitualCentavos,
+    ).toBeNull();
   });
 });

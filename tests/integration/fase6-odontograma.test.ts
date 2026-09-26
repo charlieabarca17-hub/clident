@@ -12,6 +12,7 @@ import {
   reconstruirOdontograma,
   registrarCondicion,
 } from "@/server/db/odontograma";
+import { crearDiagnostico } from "@/server/db/diagnosticos";
 import { crearPaciente } from "@/server/db/pacientes";
 
 const appUrl = process.env.TEST_DATABASE_URL!;
@@ -253,5 +254,79 @@ describe("mecanismos de la base", () => {
 
   it("cross-tenant: la clínica B no ve el odontograma del paciente de A", async () => {
     expect(await getOdontograma(ctxB, pacienteId)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hallazgo #4 de la auditoría independiente del 21-sep-2026.
+//
+// `registrarCondicion()` validaba el diagnóstico por `id + clinicaId +
+// anuladoEn` — nunca por paciente. Un evento del odontograma de un paciente
+// podía quedar colgado del diagnóstico de otro, dentro de la misma clínica: el
+// aislamiento entre clínicas seguía intacto y la integridad del expediente no.
+//
+// La corrección no es una validación más en el código: `diagnosticos` lleva
+// ahora su `paciente_id`, atado al de su expediente, y el evento apunta al
+// diagnóstico con `(clinica_id, paciente_id, diagnostico_id)`. El paciente del
+// evento y el del diagnóstico son la misma columna.
+// ---------------------------------------------------------------------------
+describe("un evento no cuelga del diagnóstico de otro paciente", () => {
+  it("la base rechaza el vínculo cruzado aunque el INSERT venga armado a mano", async () => {
+    const otro = await crearPaciente(
+      { ...ctxA, roles: ["RECEPCION"] },
+      CrearPacienteSchema.parse({
+        nombres: "Paciente",
+        apellidos: "Ajeno",
+        fechaNacimiento: "1990-07-21",
+        dui: "",
+        telefono: "7100-0003",
+        correo: "",
+        direccion: "",
+        responsable: null,
+        contactoEmergencia: { nombre: "Contacto", telefono: "7100-0004" },
+      }),
+    );
+
+    // Diagnóstico del OTRO paciente.
+    const ajeno = await crearDiagnostico(ctxA, {
+      pacienteId: otro.id,
+      descripcion: "Caries oclusal en el 36.",
+      notas: null,
+      alcance: "DIENTE",
+      dientes: [{ fdi: 36, superficie: "OCLUSAL" }],
+    });
+    expect(ajeno).not.toBeNull();
+
+    // El evento es del paciente de siempre, pero apunta al diagnóstico del otro.
+    await expect(
+      conContexto({ clinicaId: clinicaA.clinicaId }, (cliente) =>
+        cliente.query(
+          `INSERT INTO eventos_odontograma
+             (id, clinica_id, paciente_id, fdi, superficie, tipo, condicion, ocurrido_en, registrado_por_id, diagnostico_id)
+           VALUES ($1, $2, $3, 26, 'OCLUSAL', 'CONDICION_REGISTRADA', 'CARIES', now(), $4, $5)`,
+          [randomUUID(), clinicaA.clinicaId, pacienteId, clinicaA.membresiaId, ajeno!.id],
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "23503" });
+  });
+
+  it("el mismo evento, con el diagnóstico de su propio paciente, sí entra", async () => {
+    const propio = await crearDiagnostico(ctxA, {
+      pacienteId,
+      descripcion: "Caries oclusal en el 27.",
+      notas: null,
+      alcance: "DIENTE",
+      dientes: [{ fdi: 27, superficie: "OCLUSAL" }],
+    });
+
+    const evento = await registrarCondicion(ctxA, {
+      pacienteId,
+      fdi: 27,
+      superficie: "OCLUSAL",
+      condicion: "CARIES",
+      ocurridoEn: new Date(),
+      diagnosticoId: propio!.id,
+    });
+    expect(evento).not.toBeNull();
   });
 });

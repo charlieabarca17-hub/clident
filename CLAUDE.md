@@ -70,6 +70,8 @@ Todo eso vive en **migraciones SQL escritas a mano** que Prisma no conoce. Tras 
 
 No existe script `db:push` en `package.json`. No lo agregues. Si un agente te sugiere `db push` "para ir más rápido", está proponiendo borrar la seguridad del sistema.
 
+**Y te lo va a sugerir una fuente que parece confiable.** La skill oficial de Prisma instalada en `.agents/skills/prisma-cli/` documenta `db push` —incluidos `--force-reset` y `--accept-data-loss`— como uso normal, porque para el proyecto promedio lo es. **Una skill no autoriza nada acá** (ver `AGENTS.md`). Lo único que hoy impide el desastre es que `clident_app` no es dueño de las tablas: `db push` con la credencial de runtime falla. Con `MIGRATION_DATABASE_URL` a mano, no falla — por eso esa URL no vive en runtime (§17).
+
 **Migraciones: siempre `prisma migrate dev --create-only` + SQL a mano + `prisma migrate deploy`.** Nunca otra cosa.
 
 ---
@@ -119,16 +121,20 @@ PACIENTE → EXPEDIENTE → ODONTOGRAMA → DIAGNÓSTICO → PLAN DE TRATAMIENTO
 
 ## 7. Precios históricos (snapshots)
 
-> `Tratamiento.precioListaCentavos` es una referencia visual. Al crear el `PlanItem`, el odontólogo fija `PlanItem.precioUnitarioCentavos` para ese paciente; después queda inmutable.
+> **El catálogo guarda UNA tarifa de referencia y nada más** (ADR-020). `Tratamiento.precioHabitualCentavos` es el precio habitual **de esa clínica**: se precarga en el formulario del plan por comodidad y **el odontólogo lo puede cambiar antes de guardar**. El precio que vale es el que él escribe en `PlanItem.precioUnitarioCentavos`, y ahí queda inmutable (ADR-017).
 
-**Cualquier consulta que haga join de `PlanItem` (o `Procedimiento`, o `LineaCargo`) a `Tratamiento` para mostrar o calcular un precio es un bug.**
+**Cualquier consulta que haga join de `PlanItem` (o `Procedimiento`, o `LineaCargo`) a `Tratamiento` para mostrar o calcular un precio es un bug.** Vale igual para el precio habitual: el plan lleva su propio `precioHabitualCentavos` como **snapshot**, y la tarifa preferencial se calcula contra ese snapshot, nunca contra el catálogo de hoy. Si la clínica sube su tarifa en marzo, lo que se registró como preferencial en enero no puede cambiar.
 
-- Cambiar el precio del catálogo **nunca** altera un plan existente — **ni siquiera uno en `BORRADOR`**.
+- No existe "precio de catálogo": editar un `Tratamiento` **no puede** alterar un plan existente — **ni siquiera uno en `BORRADOR`**.
 - También se congelan `tratamientoNombre` y `tratamientoCodigo`: renombrar "Resina" → "Restauración con resina" no debe reescribir la historia.
 - Desactivar un tratamiento (`activo = false`) solo lo saca del selector. **Nunca afecta planes existentes.**
 - El precio del `PlanItem` es el total del tratamiento completo. Si hay varias sesiones, la primera conserva ese total como snapshot clínico y las siguientes llevan $0; Caja cobra el `PlanItem` una sola vez (ADR-017).
 
 **Advertencia para agentes:** vas a ver `tratamientoNombre` duplicado en `PlanItem` y te va a dar ganas de "normalizarlo" con un join. **Eso es exactamente el bug.** Los campos snapshot son deliberados. No los toques.
+
+**Segunda advertencia:** vas a ver `precioHabitualCentavos` duplicado en `Tratamiento` y en `PlanItem` y te va a dar ganas de quitar el del plan. **Es el mismo bug otra vez.** El del catálogo es la tarifa de hoy —editable—; el del plan es la de aquel día —congelada—. Borrar el segundo hace que el histórico se reescriba solo cada vez que la clínica ajusta su tarifa.
+
+**Tercera advertencia:** el ADR-018 había quitado los precios del catálogo y decía que no se devolvieran. **El ADR-020 revisó esa decisión con un argumento nuevo** (registrar cuánto se cobró contra cuánto era lo normal) y la cambió en parte. Lo que sigue prohibido: precios en las **plantillas de plataforma**, un precio que el sistema imponga, y cualquier cálculo de preferencial que lea el catálogo en vez del snapshot. La precarga es una sugerencia de la clínica a sí misma — **si alguna vez se vuelve un número que nadie piensa, la línea a revisar es esa** (ADR-020, "Alternativas descartadas").
 
 ---
 
@@ -213,6 +219,8 @@ REVOKE UPDATE ON procedimientos FROM clident_app;
 GRANT UPDATE (estado, notas_clinicas, anulado_en, anulado_por_id,
               motivo_anulacion, actualizado_en)
   ON procedimientos TO clident_app;
+-- Fase 9 agregó después, por separado: GRANT UPDATE (cargo_id) ON procedimientos.
+-- Si copiás este bloque, no lo pierdas: Caja lo necesita para liberar el reclamo.
 ```
 
 > **⚠ NUNCA escribas `REVOKE UPDATE (columna) ON tabla`.** No hace nada si el rol tiene `UPDATE` de tabla. Docs de PostgreSQL: *"if a role has been granted privileges on a table, then revoking the same privileges from individual columns will have no effect."* **Esa forma estuvo en este archivo hasta el Ciclo 1 y era decorativa.** El privilegio por columna solo restringe cuando es la **única** fuente. Y revocar de tabla borra también los grants por columna → el orden inverso los pierde en silencio.
@@ -303,7 +311,7 @@ El plan tiene fases numeradas (`docs/FLUJO-DE-DESARROLLO.md`). **Trabajás solo 
 
 - **No implementes "de paso"** algo de una fase posterior porque "ya que estamos".
 - **No agregues columnas, tablas ni módulos** que pertenecen a fases futuras.
-- **No implementes DTE.** Existe el seam (`src/server/billing/dte/types.ts`) y nada más. **No inventes lógica tributaria.**
+- **No implementes DTE.** Lo único que existe es la tabla vacía `documentos_fiscales` y la columna `Cargo.documentoFiscalId` (siempre nula). El seam `src/server/billing/dte/` que describe `ARQUITECTURA.md` **no se creó nunca**: no lo busques ni lo "completes". **No inventes lógica tributaria.**
 - **No integres consumo clínico con inventario** todavía.
 - **No agregues dependencias sin un ADR** y sin autorización. El stack cerrado son 8 piezas.
 - Si detectás que algo de una fase futura es necesario **ahora**, **pará y reportalo**. No lo implementes.

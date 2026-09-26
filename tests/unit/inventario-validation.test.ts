@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ActualizarMaterialSchema,
   CrearMaterialSchema,
   MovimientoInventarioSchema,
   deltaDeMovimiento,
@@ -12,6 +13,21 @@ describe("CrearMaterialSchema", () => {
   it("acepta un material con costo opcional", () => {
     const resultado = CrearMaterialSchema.parse(base);
     expect(resultado.costoUnitarioCentavos).toBeNull();
+  });
+
+  it("un costo inválido se rechaza; no se confunde con 'sin costo'", () => {
+    // Lo que llega de la acción cuando la persona escribió "abc" o "12.345".
+    expect(() => CrearMaterialSchema.parse({ ...base, costoUnitarioCentavos: Number.NaN })).toThrow();
+    expect(() =>
+      ActualizarMaterialSchema.parse({
+        materialId: "mat_1",
+        nombre: "Resina A2",
+        unidad: "jeringa",
+        stockMinimo: 3,
+        costoUnitarioCentavos: Number.NaN,
+        activo: true,
+      }),
+    ).toThrow();
   });
 
   it("rechaza stock negativo y no enteros", () => {

@@ -1,0 +1,14 @@
+# Finales de línea de CLIDENT.
+#
+# El repositorio es LF: todo lo que está commiteado ya usa LF, y así lo revisa CI.
+# Sin este archivo, un checkout en Windows convierte el árbol entero a CRLF y
+# `git status` marca los 174 archivos como modificados. Los cambios reales quedan
+# escondidos entre cientos de archivos de ruido y se vuelven imposibles de revisar
+# —que es justo lo que el Ciclo 16 vino a arreglar—, y `git diff` deja de servir
+# como control del propietario (`docs/FLUJO-DE-DESARROLLO.md`).
+#
+# `text=auto` deja que git detecte qué archivo es texto y lo guarde siempre en LF;
+# los binarios los reconoce solo y no los toca. `eol=lf` fuerza LF también en el
+# árbol de trabajo, en cualquier sistema operativo —incluido Windows—, y eso es
+# lo que impide que el problema vuelva a entrar por la máquina de otra persona.
+* text=auto eol=lf

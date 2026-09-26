@@ -20,6 +20,8 @@ import { listarDiagnosticos } from "@/server/db/diagnosticos";
 import { getPacienteAdministrativo } from "@/server/db/pacientes";
 import { getPlan } from "@/server/db/planes";
 
+import { SelectorTratamientoYPrecio } from "./selector-tratamiento";
+
 type PlanPageProps = { params: Promise<{ id: string; planId: string }> };
 
 const ETIQUETA_PLAN: Record<string, string> = {
@@ -76,7 +78,9 @@ export default async function PlanPage({ params }: PlanPageProps) {
     getPacienteAdministrativo(ctx, id),
     getPlan(ctx, planId),
   ]);
-  if (!paciente || !plan) notFound();
+  // El plan tiene que ser de ESTE paciente: si no, la pantalla mostraría el plan
+  // de otro bajo este nombre y ofrecería los diagnósticos equivocados.
+  if (!paciente || !plan || plan.pacienteId !== paciente.id) notFound();
 
   const puedeEscribir = tienePermiso(ctx.roles, "clinico:write");
   const esBorrador = plan.estado === "BORRADOR";
@@ -87,7 +91,31 @@ export default async function PlanPage({ params }: PlanPageProps) {
 
   const itemsVivos = plan.items.filter((i) => i.estado !== "CANCELADO" && i.estado !== "ANULADO");
   const total = itemsVivos.reduce((suma, item) => suma + item.precioFinalCentavos, 0);
+  // Cuánto se cobró por debajo de la tarifa habitual de la clínica (ADR-020).
+  // Sale del snapshot de cada ítem, no del catálogo de hoy: por eso no cambia
+  // cuando la clínica actualiza su tarifa.
+  // `null` no es cero: un ítem sin tarifa habitual no tiene contra qué medirse.
+  // Por eso se suma solo lo conocido y se dice cuántos quedaron afuera, en vez
+  // de presentar un total parcial como si fuera el del plan completo.
+  const itemsConTarifa = itemsVivos.filter((item) => item.preferencialCentavos !== null);
+  const preferencialTotal = itemsConTarifa.reduce((suma, item) => suma + (item.preferencialCentavos ?? 0), 0);
+  const itemsSinTarifa = itemsVivos.length - itemsConTarifa.length;
   const propuestos = plan.items.filter((i) => i.estado === "PROPUESTO");
+
+  // El precio habitual viaja junto a cada opción para poder precargarlo sin ir
+  // al servidor otra vez. Es un dato del catálogo de la clínica, no del
+  // paciente: nada sensible sale de acá.
+  const opcionesTratamiento = catalogo.flatMap((categoria) =>
+    categoria.tratamientos
+      .filter((t) => t.activo)
+      .map((t) => ({
+        id: t.id,
+        codigo: t.codigo,
+        nombre: t.aliasPersonal ?? t.nombre,
+        categoria: categoria.nombre,
+        precioHabitualCentavos: t.precioHabitualCentavos,
+      })),
+  );
 
   return (
     <main className="min-h-full bg-background p-5 sm:p-8">
@@ -108,6 +136,14 @@ export default async function PlanPage({ params }: PlanPageProps) {
             <div className="text-right">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Total vigente</p>
               <p className="font-mono text-2xl font-semibold">{formatearUSD(total)}</p>
+              {preferencialTotal > 0 ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Tarifa preferencial: −{formatearUSD(preferencialTotal)} contra lo habitual
+                  {itemsSinTarifa > 0
+                    ? ` (sin contar ${itemsSinTarifa} ${itemsSinTarifa === 1 ? "tratamiento" : "tratamientos"} sin tarifa habitual)`
+                    : ""}
+                </p>
+              ) : null}
               <p className="mt-1 max-w-52 text-xs text-muted-foreground">
                 Precios congelados al armar el plan. Aceptar no genera cobros.
               </p>
@@ -200,7 +236,16 @@ export default async function PlanPage({ params }: PlanPageProps) {
                         <td className="px-5 py-3">
                           {item.dientes.length === 0 ? "—" : item.dientes.map((d) => `${d.fdi}${d.superficie === "COMPLETO" ? "" : ` ${d.superficie.slice(0, 3).toLowerCase()}`}`).join(", ")}
                         </td>
-                        <td className="px-5 py-3 text-right font-mono">{formatearUSD(item.precioUnitarioCentavos)}</td>
+                        <td className="px-5 py-3 text-right font-mono">
+                          {formatearUSD(item.precioUnitarioCentavos)}
+                          {item.precioHabitualCentavos !== null
+                            && item.precioHabitualCentavos !== item.precioUnitarioCentavos ? (
+                            <span className="mt-0.5 block font-sans text-xs font-normal text-muted-foreground">
+                              Habitual ese día: {formatearUSD(item.precioHabitualCentavos)}
+                              {item.preferencialCentavos ? ` · preferencial −${formatearUSD(item.preferencialCentavos)}` : ""}
+                            </span>
+                          ) : null}
+                        </td>
                         <td className="px-5 py-3 text-right font-mono">{item.descuentoCentavos > 0 ? `−${formatearUSD(item.descuentoCentavos)}` : "—"}</td>
                         <td className="px-5 py-3"><span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${etiqueta.clase}`}>{etiqueta.texto}</span></td>
                         {puedeEscribir ? (
@@ -252,20 +297,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
               <input type="hidden" name="pacienteId" value={paciente.id} />
               <input type="hidden" name="planId" value={plan.id} />
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-medium">Tratamiento *
-                  <select name="tratamientoId" required className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
-                    <option value="">— Elegí del catálogo —</option>
-                    {catalogo.map((categoria) => (
-                      <optgroup key={categoria.id} label={categoria.nombre}>
-                        {categoria.tratamientos.filter((t) => t.activo).map((tratamiento) => (
-                          <option key={tratamiento.id} value={tratamiento.id}>
-                            {tratamiento.codigo} · {tratamiento.aliasPersonal ?? tratamiento.nombre}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                </label>
+                <SelectorTratamientoYPrecio opciones={opcionesTratamiento} />
                 <label className="block text-sm font-medium">Diagnóstico vinculado
                   <select name="diagnosticoId" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">
                     <option value="">— Ninguno —</option>
@@ -274,12 +306,6 @@ export default async function PlanPage({ params }: PlanPageProps) {
                     ))}
                   </select>
                   <span className="mt-1 block text-xs font-normal text-muted-foreground">Obligatorio si el tratamiento lo exige (endodoncias, cirugía periodontal…).</span>
-                </label>
-                <label className="block text-sm font-medium">Precio para este paciente (USD) *
-                  <input name="precioAcordado" required inputMode="decimal" placeholder="150.00" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
-                  <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                    Es el precio total del tratamiento, aunque necesite varias sesiones.
-                  </span>
                 </label>
                 <label className="block text-sm font-medium">Descuento (USD)
                   <input name="descuento" inputMode="decimal" placeholder="0.00" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />

@@ -12,7 +12,9 @@ import type {
 } from "@/lib/validation/procedimientos";
 
 import { recalcularSuperficie } from "./odontograma";
+import { bloquearPlanItemParaCaja } from "./raw/bloquear-plan-item-caja";
 import { proyectarEstadoSuperficie } from "./raw/proyectar-estado-superficie";
+import { ErrorReglaClinica } from "@/lib/errors";
 import { conTenant, type TenantTransaction } from "./tenant";
 
 const SELECT_PROCEDIMIENTO = {
@@ -72,8 +74,17 @@ async function sucursalPredeterminada(tx: TenantTransaction, clinicaId: string):
     orderBy: { creadoEn: "asc" },
     take: 2,
   });
-  if (sucursales.length === 0) throw new Error("La clínica no tiene una sucursal disponible.");
-  if (sucursales.length > 1) throw new Error("Elegí una sede antes de registrar el procedimiento.");
+  if (sucursales.length === 0) throw new ErrorReglaClinica("La clínica no tiene una sucursal disponible.");
+  // No dice "elegí una sede": este formulario no tiene selector de sede y la
+  // interfaz de sucursales está fuera de alcance (`FLUJO-DE-DESARROLLO.md` §7).
+  // Pedirle al profesional algo que la pantalla no le permite hacer lo deja
+  // atrapado sin salida; el mensaje tiene que decirle que no es su culpa y a
+  // quién avisar.
+  if (sucursales.length > 1) {
+    throw new ErrorReglaClinica(
+      "Esta clínica tiene más de una sede y este formulario todavía no permite elegirla. No es algo que puedas corregir acá: avisá a quien administra CLIDENT.",
+    );
+  }
   return sucursales[0].id;
 }
 
@@ -92,6 +103,12 @@ export async function realizarProcedimiento(
 ) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    // Primero el candado del PlanItem, igual que anular y que Caja: un solo orden
+    // de bloqueo (PlanItem → superficies) para que registrar y anular sesiones
+    // del mismo tratamiento no se esperen en orden inverso (deadlock, §13).
+    if (!(await bloquearPlanItemParaCaja(tx, { clinicaId: ctx.clinicaId, planItemId: input.planItemId }))) {
+      return null;
+    }
     const planItem = await tx.planItem.findFirst({
       where: { id: input.planItemId, clinicaId: ctx.clinicaId },
       select: {
@@ -107,6 +124,9 @@ export async function realizarProcedimiento(
           select: { id: true },
           take: 1,
         },
+        // Cualquier sesión vigente, con o sin precio: es lo que decide si un
+        // tratamiento de una sola sesión ya se hizo.
+        _count: { select: { procedimientos: { where: { estado: "REALIZADO" } } } },
         plan: { select: { estado: true, pacienteId: true } },
         // Banderas del catálogo: comportamiento, NUNCA precio (ADR-006).
         tratamiento: {
@@ -124,32 +144,35 @@ export async function realizarProcedimiento(
     if (!planItem || planItem.plan.pacienteId !== input.pacienteId) return null;
 
     if (planItem.plan.estado !== "ACEPTADO") {
-      throw new Error("El plan de este tratamiento no está aceptado por el paciente.");
+      throw new ErrorReglaClinica("El plan de este tratamiento no está aceptado por el paciente.");
     }
     if (planItem.estado !== "ACEPTADO" && planItem.estado !== "EN_PROCESO") {
-      throw new Error(`No se puede registrar una sesión sobre un tratamiento ${planItem.estado}.`);
+      throw new ErrorReglaClinica(`No se puede registrar una sesión sobre un tratamiento ${planItem.estado}.`);
     }
-    if (planItem.estado === "EN_PROCESO" && !planItem.tratamiento.permiteMultiplesSesiones) {
-      throw new Error("Este tratamiento es de una sola sesión y ya tiene una registrada.");
+    // Se mira si queda una sesión REALIZADA, no el estado del ítem: anular la
+    // única sesión deja el ítem EN_PROCESO, y REGLAS §3.4 manda registrarla de
+    // nuevo. Con la guarda por estado, el registro correcto quedaba bloqueado.
+    if (planItem._count.procedimientos > 0 && !planItem.tratamiento.permiteMultiplesSesiones) {
+      throw new ErrorReglaClinica("Este tratamiento es de una sola sesión y ya tiene una registrada.");
     }
 
     const banderas = planItem.tratamiento;
     const fdisDistintos = new Set(input.dientes.map((d) => d.fdi));
     if (banderas.alcance === "BOCA" && input.dientes.length > 0) {
-      throw new Error("Este tratamiento es de boca completa: no lleva piezas.");
+      throw new ErrorReglaClinica("Este tratamiento es de boca completa: no lleva piezas.");
     }
     if (banderas.requiereDiente && fdisDistintos.size === 0) {
-      throw new Error("Este tratamiento exige indicar al menos una pieza.");
+      throw new ErrorReglaClinica("Este tratamiento exige indicar al menos una pieza.");
     }
     if (!banderas.permiteMultiplesDientes && fdisDistintos.size > 1) {
-      throw new Error("Este tratamiento cubre una sola pieza por sesión.");
+      throw new ErrorReglaClinica("Este tratamiento cubre una sola pieza por sesión.");
     }
     const superficiesEspecificas = input.dientes.filter((d) => d.superficie !== "COMPLETO");
     if (!banderas.permiteSuperficies && superficiesEspecificas.length > 0) {
-      throw new Error("Este tratamiento no se registra por superficies.");
+      throw new ErrorReglaClinica("Este tratamiento no se registra por superficies.");
     }
     if (!banderas.permiteMultiplesSuperficies && superficiesEspecificas.length > 1) {
-      throw new Error("Este tratamiento admite una sola superficie.");
+      throw new ErrorReglaClinica("Este tratamiento admite una sola superficie.");
     }
 
     // ADR-017: el precio es del tratamiento completo, no de cada sesión. Si la
@@ -335,7 +358,20 @@ export async function enmendarNotaClinica(
  * Anula el procedimiento: estado ANULADO + evento compensatorio en el
  * odontograma por cada evento que este procedimiento generó, con recálculo
  * de cada superficie (el mismo camino de CONDICION_ANULADA de la Fase 6).
- * Nunca delete. (El candado "no anular si ya está cobrado" llega con Caja.)
+ * Nunca delete.
+ *
+ * **Un procedimiento cobrado no se anula dejando el cobro sin tratamiento**
+ * (CLAUDE.md §9). Caja solo crea un cobro directo si el `PlanItem` tiene al
+ * menos una sesión realizada (`crearCargoDePlan`); esta función protege ese
+ * mismo invariante en la dirección contraria: con un cobro directo vigente, la
+ * última sesión realizada no se puede anular — primero Caja anula el cargo. Las
+ * sesiones anteriores sí, porque el cobro sigue teniendo un hecho detrás.
+ *
+ * Las cuotas NO bloquean: Caja las crea antes de cualquier sesión (§1.9), así
+ * que un calendario sin sesión realizada es un estado que el sistema ya admite.
+ *
+ * Se toma el mismo candado del `PlanItem` que usa Caja: sin él, Caja podría
+ * cobrar en el mismo instante en que se anula la única sesión.
  */
 export async function anularProcedimiento(
   ctx: TenantContext,
@@ -344,11 +380,44 @@ export async function anularProcedimiento(
 ) {
   requirePermiso(ctx, "clinico:write");
   return conTenant(ctx, async (tx) => {
+    const candidato = await tx.procedimiento.findFirst({
+      where: { id: procedimientoId, clinicaId: ctx.clinicaId, estado: "REALIZADO" },
+      select: { planItemId: true },
+    });
+    if (!candidato) return null;
+    if (!(await bloquearPlanItemParaCaja(tx, { clinicaId: ctx.clinicaId, planItemId: candidato.planItemId }))) {
+      return null;
+    }
+
+    // Se relee DESPUÉS del candado: lo leído antes pudo cambiar mientras se esperaba.
     const procedimiento = await tx.procedimiento.findFirst({
       where: { id: procedimientoId, clinicaId: ctx.clinicaId, estado: "REALIZADO" },
-      select: { id: true, pacienteId: true },
+      select: {
+        id: true,
+        pacienteId: true,
+        cargoId: true,
+        planItem: {
+          select: {
+            cargos: { where: { anuladoEn: null, cuotaNumero: null }, select: { id: true }, take: 1 },
+            procedimientos: {
+              where: { estado: "REALIZADO", id: { not: procedimientoId } },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        },
+      },
     });
     if (!procedimiento) return null;
+
+    const reclamadoPorCargo = procedimiento.cargoId !== null;
+    const dejaCobroSinTratamiento =
+      procedimiento.planItem.cargos.length > 0 && procedimiento.planItem.procedimientos.length === 0;
+    if (reclamadoPorCargo || dejaCobroSinTratamiento) {
+      throw new ErrorReglaClinica(
+        "Este tratamiento tiene un cobro vigente en Caja y esta es su única sesión realizada: primero Caja debe anular el cargo.",
+      );
+    }
 
     const actualizado = await tx.procedimiento.update({
       where: { clinicaId_id: { clinicaId: ctx.clinicaId, id: procedimiento.id } },

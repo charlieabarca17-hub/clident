@@ -39,3 +39,20 @@ describe("precio acordado de un tratamiento", () => {
     ).toBe(false);
   });
 });
+
+describe("la tarifa habitual no viaja en el request (ADR-020)", () => {
+  it("el esquema no tiene dónde recibirla: el servidor la lee del catálogo", () => {
+    // Si el habitual llegara desde el navegador, un cliente podría declarar que
+    // lo normal eran $9,999 e inflar cuánto "se dio" en tarifa preferencial.
+    // Zod descarta las claves que no están en el esquema, así que ese campo
+    // nunca llega al repositorio (§2.3: los esquemas de entrada no contienen lo
+    // que el servidor debe decidir).
+    const resultado = AgregarPlanItemSchema.parse({
+      ...base,
+      precioAcordadoCentavos: 4000,
+      precioHabitualCentavos: 999_900,
+    });
+
+    expect(resultado).not.toHaveProperty("precioHabitualCentavos");
+  });
+});

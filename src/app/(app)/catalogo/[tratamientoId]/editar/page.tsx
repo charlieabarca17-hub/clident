@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Star } from "lucide-react";
 
+import { usdEditable } from "@/lib/money";
 import {
   actualizarTratamientoDesdeFormulario,
   guardarPreferenciaDesdeFormulario,
@@ -71,6 +72,22 @@ export default async function EditarTratamientoPage({ params }: { params: Editar
               <label className="block text-sm font-medium sm:col-span-2">Nombre usado en la clínica *
                 <input name="nombre" required maxLength={120} defaultValue={tratamiento.nombre} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
               </label>
+              <label className="block text-sm font-medium">Precio habitual de la clínica (USD)
+                <input
+                  name="precioHabitual"
+                  inputMode="decimal"
+                  placeholder="45.00"
+                  defaultValue={
+                    tratamiento.precioHabitualCentavos === null
+                      ? ""
+                      : usdEditable(tratamiento.precioHabitualCentavos)
+                  }
+                  className="mt-1 w-full rounded-lg border px-3 py-2 font-normal"
+                />
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                  Opcional. Vaciá el campo para dejar el tratamiento sin tarifa.
+                </span>
+              </label>
               <label className="flex items-center gap-2 text-sm font-medium">
                 <input type="checkbox" name="activo" defaultChecked={tratamiento.activo} />
                 Disponible para planes nuevos
@@ -78,7 +95,8 @@ export default async function EditarTratamientoPage({ params }: { params: Editar
             </div>
             <p className="mt-5 rounded-lg bg-muted p-3 text-xs text-muted-foreground">
               Código y comportamiento clínico permanecen fijos. Desactivar no borra planes, procedimientos ni historial.
-              El precio siempre se define dentro del plan del paciente.
+              <strong className="font-semibold"> Cambiar el precio habitual no toca ningún plan ya armado:</strong> cada
+              plan guarda el precio acordado y la tarifa que era habitual ese día.
             </p>
             <div className="mt-5 flex justify-end gap-3">
               <Link href="/catalogo" className="rounded-lg px-4 py-2 text-sm">Cancelar</Link>

@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import pg, { type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { CONSULTAS_RECONCILIACION } from "../../infra/reconciliar.ts";
+
 import type { TenantContext } from "@/server/auth/types";
 import { db } from "@/server/db/client";
 import {
@@ -279,12 +281,11 @@ describe("mecanismos de la base y aislamiento", () => {
     const guarda = await migrator.query("SELECT count(*)::int AS total FROM materiales");
     expect(guarda.rows[0].total).toBeGreaterThan(0);
 
-    const descuadres = await migrator.query(
-      `SELECT m.id FROM materiales m
-       LEFT JOIN movimientos_inventario mv ON mv.material_id = m.id
-       GROUP BY m.id, m.stock_actual
-       HAVING m.stock_actual <> COALESCE(SUM(mv.cantidad), 0)`,
-    );
+    // La consulta se importa del script real, no se copia (ARQUITECTURA §13.4).
+    const consulta = CONSULTAS_RECONCILIACION.find((c) => c.nombre.startsWith("#3"));
+    expect(consulta, "el control #3 desapareció de infra/reconciliar.ts").toBeDefined();
+
+    const descuadres = await migrator.query(consulta!.sql);
     expect(descuadres.rows).toEqual([]);
   });
 });

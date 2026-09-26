@@ -124,6 +124,7 @@ Antes de reportar, releé tu diff y respondé cada una:
 **Dinero**
 - [ ] ¿Todo monto es `Int` en centavos y termina en `Centavos`?
 - [ ] ¿Hay algún join a `Tratamiento` para obtener un precio de algo ya creado? **(bug)**
+- [ ] ¿La tarifa preferencial se calcula contra el catálogo de hoy en vez del snapshot `PlanItem.precioHabitualCentavos`? **(bug — ADR-020)**
 - [ ] ¿El precio del catálogo se impone al paciente en vez de ser solo una referencia? **(bug: el odontólogo fija el precio del `PlanItem`)**
 - [ ] ¿Un tratamiento multisesión puede generar un cargo por sesión? **(bug: se cobra una vez por `PlanItem`)**
 - [ ] ¿La suma de cuotas difiere del total acordado? **(bug)**
@@ -186,6 +187,7 @@ Estas cosas **no se implementan y después se muestran**. Se proponen, se discut
 | Regla | Detalle |
 |---|---|
 | Rama por ciclo | `ciclo-N-descripcion-corta`. Nunca directo sobre `main`. |
+| **Antes de nombrar la rama** | Correr `git branch -a` **y** `git worktree list`. Un número de ciclo repetido esconde trabajo real: en septiembre de 2026 las ramas `ciclo-16` a `ciclo-19` ya existían con 4 commits sin publicar, y tanto el plan como el agente propusieron reusar esos números. |
 | Un ciclo = un commit coherente | Mensajes en español, explicando **por qué**, no qué. |
 | Commit | Solo cuando Carlos lo pide. |
 | Push | Solo con autorización explícita. **Nunca en silencio.** |
@@ -210,7 +212,7 @@ Estas cosas **no se implementan y después se muestran**. Se proponen, se discut
 | **6. Odontograma** | Eventos, proyección, `reducer.ts`, `rebuild.ts`, SVG 32+20, timeline, anulación **recalculada** (§10.1). | **Equivalencia de caminos verde** (el rebuild no cambia lo que escribió el camino en vivo); ningún evento se pierde. |
 | **7. Planes** | Planes, ítems, precio acordado por paciente y snapshot al crear, estados independientes (enums en `REGLAS-DE-NEGOCIO.md` §4.4). | **Prueba de precio libre y congelado verde.** |
 | **8. Procedimientos** | Procedimientos, enmiendas, anulación, generación de eventos, ventana de gracia. **Migración SQL: `REVOKE UPDATE ON procedimientos` + `GRANT UPDATE (columnas mutables)`** — en ese orden (ADR-012). | Realizar un procedimiento pinta el odontograma y avanza el plan. **Un `UPDATE` del precio aplicado → *permission denied*.** |
-| **9. Caja** | Cargos, líneas, pagos, aplicaciones. **Un cobro por `PlanItem` o cuotas por exactamente el mismo total.** Dos contadores + dos `CHECK` (cargo y pago). Anulación de `Pago`. Reversas negativas (solo completas). **`fechaExigibleEn` + los cuatro saldos (ADR-013).** Lista de tratamientos realizados sin cargo. Pagos parciales. `DocumentoFiscal` vacío + `NoopDteProvider`. | **Prueba presupuesto≠deuda verde.** **18 cuotas de $60 → exigible $60, no $1,080.** **Tratamiento de $150 en varias sesiones → total cargado $150.** Saldos cuadran. |
+| **9. Caja** | Cargos, líneas, pagos, aplicaciones. **Un cobro por `PlanItem` o cuotas por exactamente el mismo total.** Dos contadores + dos `CHECK` (cargo y pago). Anulación de `Pago`. Reversas negativas (solo completas). **`fechaExigibleEn` + los cuatro saldos (ADR-013).** Lista de tratamientos realizados sin cargo. Pagos parciales. `DocumentoFiscal` vacío (el `NoopDteProvider` previsto nunca se creó). | **Prueba presupuesto≠deuda verde.** **18 cuotas de $60 → exigible $60, no $1,080.** **Tratamiento de $150 en varias sesiones → total cargado $150.** Saldos cuadran. |
 | **10. Inventario** | Materiales, movimientos, alertas, estado vacío. | Movimientos append-only. |
 | **11. Dashboard + Historial** | KPIs reales. Timeline clínico unificado. | Carlos ve el flujo completo de un paciente en una pantalla. |
 | **12. Endurecimiento + Responsividad** | Cobertura, `npm audit`, rate limit en login, respaldos, ADRs, revisión de permisos. Responsividad en desktop/laptop/tablet/móvil. | Todo verde en CI. Sin scroll horizontal innecesario. |
@@ -227,7 +229,7 @@ datos y evita crear una agenda que no pueda persistirse con integridad referenci
 
 ## Fuera de alcance hasta nuevo aviso
 
-- **DTE.** Existe el seam. Nada más. **No se inventa lógica tributaria.**
+- **DTE.** Solo existe la tabla vacía `documentos_fiscales`; el seam de código previsto no se creó. **No se inventa lógica tributaria.**
 - **Consumo clínico integrado con inventario.**
 - **Suscripciones, Stripe, registro público, onboarding automatizado.**
 - **Interfaz de sucursales** (la entidad existe; la UI no).

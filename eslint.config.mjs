@@ -95,6 +95,19 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+
+    // Skills de agentes instaladas por autoskills. Son material de referencia de
+    // terceros, no código de CLIDENT: sus plantillas ensuciaban `npm run lint`
+    // con avisos sobre archivos que el proyecto no controla ni puede arreglar, y
+    // un lint con ruido crónico es un lint que se deja de leer.
+    ".agents/**",
+
+    // Lo mismo, por otra razón: acá viven los worktrees de los agentes y los
+    // archivos de trabajo de Claude Code. Un worktree es una COPIA del
+    // repositorio, así que sin esto `npm run lint` recorre el proyecto dos
+    // veces y reporta cada archivo duplicado como error nuevo. No es código
+    // del proyecto: el worktree tiene su propio lint.
+    ".claude/**",
   ]),
 
   {

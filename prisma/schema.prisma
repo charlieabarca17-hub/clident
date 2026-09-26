@@ -356,6 +356,8 @@ model Expediente {
 
   @@unique([clinicaId, id])
   @@unique([clinicaId, pacienteId])
+  // Destino de la FK de Diagnostico: ata el paciente del diagnóstico al de su expediente.
+  @@unique([clinicaId, pacienteId, id])
   @@map("expedientes")
 }
 
@@ -473,9 +475,10 @@ model CategoriaTratamiento {
   @@map("categorias_tratamiento")
 }
 
-// Catálogo compartido de la clínica. No guarda precios: el odontólogo define el
-// total acordado al preparar cada plan. Puede partir de una referencia global o
-// ser un tratamiento personalizado de la clínica.
+// Catálogo compartido de la clínica. Guarda como mucho la tarifa habitual DE LA
+// CLÍNICA (ADR-020), que solo se precarga: el odontólogo define el total acordado
+// al preparar cada plan. Puede partir de una referencia global o ser un
+// tratamiento personalizado de la clínica.
 model Tratamiento {
   id                          String             @id @default(cuid())
   clinicaId                   String             @map("clinica_id")
@@ -483,6 +486,10 @@ model Tratamiento {
   codigo                      String
   nombre                      String
   plantillaCodigo             String?            @map("plantilla_codigo")
+  // ADR-020: precio habitual DE ESTA CLÍNICA. Nullable: un tratamiento puede no
+  // tenerlo todavía y eso no bloquea nada. Se precarga al armar un plan, pero el
+  // precio que manda sigue siendo el que escribe el odontólogo (ADR-017).
+  precioHabitualCentavos Int?      @map("precio_habitual_centavos")
   activo                      Boolean            @default(true)
   alcance                     AlcanceTratamiento
   requiereDiente              Boolean            @map("requiere_diente")
@@ -716,6 +723,8 @@ model Cargo {
   procedimientosCobrados Procedimiento[]  @relation("ProcedimientoCobradoEn")
 
   @@unique([clinicaId, id])
+  // Ver la nota del mismo índice en Pago.
+  @@unique([clinicaId, pacienteId, id])
   @@unique([clinicaId, planItemId, cuotaNumero])
   @@index([clinicaId, pacienteId])
   @@index([clinicaId, fechaExigibleEn])
@@ -771,6 +780,9 @@ model Pago {
   aplicaciones AplicacionPago[] @relation("AplicacionPago")
 
   @@unique([clinicaId, id])
+  // Destino de la FK de AplicacionPago: hace que el paciente del pago y el de la
+  // aplicación sean la MISMA columna, no dos que alguien tenga que comparar.
+  @@unique([clinicaId, pacienteId, id])
   @@index([clinicaId, pacienteId])
   @@map("pagos")
 }
@@ -781,6 +793,10 @@ model Pago {
 model AplicacionPago {
   id                    String   @id @default(cuid())
   clinicaId             String   @map("clinica_id")
+  // No es redundante: es el mecanismo. Al estar en las dos FK compuestas, el
+  // paciente del pago y el del cargo dejan de poder diferir (§3 del manual,
+  // extendido de clínica a paciente).
+  pacienteId            String   @map("paciente_id")
   pagoId                String   @map("pago_id")
   cargoId               String   @map("cargo_id")
   montoCentavos         Int      @map("monto_centavos")
@@ -792,8 +808,8 @@ model AplicacionPago {
   creadaPorId           String   @map("creada_por_id")
 
   clinica   Clinica   @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  pago      Pago      @relation("AplicacionPago", fields: [clinicaId, pagoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  cargo     Cargo     @relation("AplicacionCargo", fields: [clinicaId, cargoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  pago      Pago      @relation("AplicacionPago", fields: [clinicaId, pacienteId, pagoId], references: [clinicaId, pacienteId, id], onDelete: Restrict, onUpdate: Restrict)
+  cargo     Cargo     @relation("AplicacionCargo", fields: [clinicaId, pacienteId, cargoId], references: [clinicaId, pacienteId, id], onDelete: Restrict, onUpdate: Restrict)
   creadaPor Membresia @relation("AplicacionCreadaPor", fields: [clinicaId, creadaPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([clinicaId, id])
@@ -928,6 +944,11 @@ model PlanItem {
   tratamientoCodigo      String         @map("tratamiento_codigo")
   tratamientoNombre      String         @map("tratamiento_nombre")
   precioUnitarioCentavos Int            @map("precio_unitario_centavos")
+  // Snapshot de lo que era habitual CUANDO SE ARMÓ ESTE PLAN (ADR-020). Es lo
+  // que hace que "cuánto se dio en preferencial" no cambie cuando la clínica
+  // actualiza su tarifa. Calcular el preferencial con un join a `Tratamiento`
+  // es el bug que este campo existe para impedir — igual que en el ADR-006.
+  precioHabitualCentavos Int?           @map("precio_habitual_centavos")
   descuentoCentavos      Int            @default(0) @map("descuento_centavos")
   estado                 EstadoPlanItem @default(PROPUESTO)
   creadoPorId            String         @map("creado_por_id")
@@ -991,7 +1012,7 @@ model EventoOdontograma {
   paciente           Paciente           @relation(fields: [clinicaId, pacienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   cara               SuperficieDiente   @relation(fields: [fdi, superficie], references: [fdi, superficie], onDelete: Restrict, onUpdate: Restrict)
   registradoPor      Membresia          @relation("EventoOdontogramaRegistradoPor", fields: [clinicaId, registradoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
-  diagnostico        Diagnostico?       @relation(fields: [clinicaId, diagnosticoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  diagnostico        Diagnostico?       @relation(fields: [clinicaId, pacienteId, diagnosticoId], references: [clinicaId, pacienteId, id], onDelete: Restrict, onUpdate: Restrict)
   procedimiento      Procedimiento?     @relation("EventoProcedimiento", fields: [clinicaId, procedimientoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   anulaEvento        EventoOdontograma? @relation("EventoAnulacion", fields: [clinicaId, anulaEventoId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   anuladoPorEvento   EventoOdontograma? @relation("EventoAnulacion")
@@ -1036,6 +1057,9 @@ model EstadoSuperficie {
 model Diagnostico {
   id              String             @id @default(cuid())
   clinicaId       String             @map("clinica_id")
+  // Copiado del expediente y amarrado a él por FK compuesta: es lo que permite
+  // que un evento del odontograma no pueda colgar del diagnóstico de otro paciente.
+  pacienteId      String             @map("paciente_id")
   expedienteId    String             @map("expediente_id")
   descripcion     String
   notas           String?
@@ -1048,7 +1072,7 @@ model Diagnostico {
   actualizadoEn   DateTime           @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
   clinica            Clinica             @relation(fields: [clinicaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  expediente         Expediente          @relation(fields: [clinicaId, expedienteId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
+  expediente         Expediente          @relation(fields: [clinicaId, pacienteId, expedienteId], references: [clinicaId, pacienteId, id], onDelete: Restrict, onUpdate: Restrict)
   registradoPor      Membresia           @relation("DiagnosticoRegistradoPor", fields: [clinicaId, registradoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   anuladoPor         Membresia?          @relation("DiagnosticoAnuladoPor", fields: [clinicaId, anuladoPorId], references: [clinicaId, id], onDelete: Restrict, onUpdate: Restrict)
   dientes            DiagnosticoDiente[]
@@ -1056,6 +1080,8 @@ model Diagnostico {
   planItems          PlanItem[]
 
   @@unique([clinicaId, id])
+  // Destino de la FK de EventoOdontograma.
+  @@unique([clinicaId, pacienteId, id])
   @@index([clinicaId, expedienteId])
   @@map("diagnosticos")
 }

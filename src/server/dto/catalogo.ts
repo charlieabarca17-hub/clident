@@ -6,6 +6,7 @@ type TratamientoDb = {
   plantilla: { nombre: string } | null;
   preferencias: { alias: string | null; favorito: boolean }[];
   activo: boolean;
+  precioHabitualCentavos: number | null;
   alcance: "DIENTE" | "BOCA";
   requiereDiente: boolean;
   permiteMultiplesDientes: boolean;
@@ -32,6 +33,7 @@ export function toTratamientoDto(tratamiento: TratamientoDb) {
     aliasPersonal: preferencia?.alias ?? null,
     favorito: preferencia?.favorito ?? false,
     activo: tratamiento.activo,
+    precioHabitualCentavos: tratamiento.precioHabitualCentavos,
     alcance: tratamiento.alcance,
     requiereDiente: tratamiento.requiereDiente,
     permiteMultiplesDientes: tratamiento.permiteMultiplesDientes,
